@@ -28,14 +28,17 @@ import java.awt.SystemTray;
 import java.awt.TrayIcon;
 import java.awt.Window;
 import java.awt.event.ActionEvent;
-import java.awt.event.FocusEvent;
-import java.awt.event.FocusListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 import javax.imageio.ImageIO;
 import javax.swing.AbstractAction;
@@ -64,6 +67,11 @@ public class Main {
 	public final static String NAME = "Mǫtunautr";
 	
 	private final static List<BDWindow> windows = new ArrayList<>();
+	
+	public final static ThreadPoolExecutor threadPool = new ThreadPoolExecutor(16, 16, 1, TimeUnit.MINUTES, new LinkedBlockingQueue<>());
+	static {
+		threadPool.allowCoreThreadTimeOut(true);
+	}
 	
 	@SuppressWarnings("null")
 	public static Image icon;
@@ -151,29 +159,47 @@ public class Main {
 		});
 		SystemTray.getSystemTray().add(trayIcon);
 		
+		final HWND progman = User32.INSTANCE.FindWindow("Progman", "Program Manager");
+		
 		final File mainFolder = new File(Settings.directory);
 		final @NonNull File[] contents = mainFolder.listFiles();
 		assert contents != null;
 		for (final File f : contents) {
 			if (f.isHidden() || f.getName().startsWith(".") || !f.isDirectory())
 				continue;
-			final BDWindow w = new BDWindow(f);
-			windows.add(w);
-			w.pack();
-			w.setVisible(true);
-			
-			ch.njol.betterdesktop.win32.User32.enableBlur(w);
-			Dwmapi.setExcludedFromPeek(w, true);
+			threadPool.execute(() -> {
+				final BDWindow w = new BDWindow(f);
+				windows.add(w);
+				w.pack();
+				w.setVisible(true);
+				
+				ch.njol.betterdesktop.win32.User32.enableBlur(w);
+				Dwmapi.setExcludedFromPeek(w, true);
+				
+				// prevents "show desktop" button from hiding the windows
+				if (progman != null) {
+					User32.INSTANCE.SetWindowLongPtr(new HWND(Native.getComponentPointer(w)), WinUser.GWL_HWNDPARENT, progman.getPointer());
+					w.setAlwaysOnTop(true); // not sure why this is required, maybe it just causes some update
+					w.setAlwaysOnTop(false);
+				}
+			});
 		}
 		
-		// prevents "show desktop" button from hiding the windows
-		final HWND progman = User32.INSTANCE.FindWindow("Progman", "Program Manager");
-		if (progman != null) {
-			for (final BDWindow w : windows) {
-				User32.INSTANCE.SetWindowLongPtr(new HWND(Native.getComponentPointer(w)), WinUser.GWL_HWNDPARENT, progman.getPointer());
-				w.setAlwaysOnTop(true); // not sure why this is required, maybe it just causes some update
-				w.setAlwaysOnTop(false);
-			}
+		try {
+			Thread.sleep(10000);
+		} catch (final InterruptedException e) {}
+		
+		// clean up cached images of files that don't exist any more
+		for (final BDWindow w : windows) {
+			Files.walk(w.metaFolder.toPath()).forEach(p -> {
+				if (!p.getFileName().toString().endsWith(".png"))
+					return;
+				final Path file = FileIcon.fileFromIconCacheFile(w, p);
+				if (file == null || !file.toFile().exists()) {
+					System.out.println("Deleting cached icon for " + file);
+					p.toFile().delete();
+				}
+			});
 		}
 		
 	}

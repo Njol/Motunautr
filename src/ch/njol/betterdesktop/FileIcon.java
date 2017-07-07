@@ -28,9 +28,11 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.event.MouseEvent;
+import java.awt.image.BufferedImage;
+import java.awt.image.RenderedImage;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Arrays;
 
 import javax.imageio.ImageIO;
@@ -38,7 +40,6 @@ import javax.swing.ImageIcon;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JToolTip;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.filechooser.FileSystemView;
@@ -46,20 +47,16 @@ import javax.swing.filechooser.FileSystemView;
 import org.eclipse.jdt.annotation.NonNull;
 import org.eclipse.jdt.annotation.Nullable;
 
-import com.sun.jna.platform.win32.User32;
-import com.sun.jna.platform.win32.User32Util;
-import com.sun.jna.platform.win32.WinGDI.ICONINFO;
-
-import ch.njol.betterdesktop.win32.SHFILEINFO;
-import ch.njol.betterdesktop.win32.Shell32;
 import sun.awt.shell.ShellFolder;
 
 public class FileIcon extends JPanel {
 	
+	private final BDWindow window;
+	
 	private final File file;
 	private final File fileToRun;
 	private final boolean isExpandable;
-	private final Image icon;
+	private @Nullable Image icon;
 	private final JLabel /*iconLabel, */ nameLabel;
 	
 	private boolean hovered = false;
@@ -69,10 +66,12 @@ public class FileIcon extends JPanel {
 	private final static int ICON_SIZE = 32;
 	private final static int LABEL_HEIGHT = SIZE_Y - 2 * PADDING_Y - ICON_SIZE;
 	
-	public FileIcon(final File file, final boolean useFolder) {
+	public FileIcon(final BDWindow window, final File file, final boolean useFolder) {
+		this.window = window;
 		this.file = file;
 		fileToRun = useFolder ? getFileToRun(file) : file;
-		icon = getIcon(fileToRun);
+		
+		updateIcon();
 		
 		setLayout(null);
 		setMinimumSize(new Dimension(SIZE_X, SIZE_Y));
@@ -84,7 +83,7 @@ public class FileIcon extends JPanel {
 		String name = file.getName();
 		if (name.endsWith(".lnk") || name.endsWith(".url") || name.endsWith(".exe"))
 			name = name.substring(0, name.lastIndexOf('.'));
-		if (name.startsWith("_"))
+		if (name.startsWith("!"))
 			name = name.substring(1);
 		add(nameLabel = new JLabel(name));
 		nameLabel.setLocation(PADDING_X, PADDING_Y + ICON_SIZE);
@@ -93,7 +92,7 @@ public class FileIcon extends JPanel {
 		nameLabel.setBackground(null);
 		nameLabel.setHorizontalAlignment(SwingConstants.CENTER);
 		if (nameLabel.getFontMetrics(nameLabel.getFont()).stringWidth(name) > nameLabel.getWidth())
-			this.setToolTipText(name);
+			setToolTipText(name);
 		
 		isExpandable = file.isDirectory();
 		
@@ -139,19 +138,22 @@ public class FileIcon extends JPanel {
 		final Composite oldComp = g2.getComposite();
 		if (!hovered)
 			g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.7f));
-		g.drawImage(icon, (getWidth() - ICON_SIZE) / 2, PADDING_Y, ICON_SIZE, ICON_SIZE, null);
+		if (icon != null)
+			g.drawImage(icon, (getWidth() - ICON_SIZE) / 2, PADDING_Y, ICON_SIZE, ICON_SIZE, null);
 		if (isExpandable) {
 //			g.drawImage(expandIcon, (getWidth() + ICON_SIZE) / 2 - EXPAND_ICON_SIZE / 2, PADDING_Y + ICON_SIZE - EXPAND_ICON_SIZE, EXPAND_ICON_SIZE, EXPAND_ICON_SIZE, null);
-			int expandX = (getWidth() + ICON_SIZE) / 2, expandY = PADDING_Y + ICON_SIZE;
-			int expandSize = 10;
+			final int expandX = (getWidth() + ICON_SIZE) / 2, expandY = PADDING_Y + ICON_SIZE;
+			final int expandSize = 10;
 			g.setColor(Color.white);
 			g2.setStroke(new BasicStroke(3, BasicStroke.CAP_SQUARE, BasicStroke.JOIN_MITER, 10));
-			g.drawLine(expandX, expandY, expandX - expandSize/2, expandY - expandSize/2);
-			g.drawLine(expandX, expandY, expandX + expandSize/2, expandY - expandSize/2);
+			g.drawPolyline(
+					new int[] {expandX - expandSize / 2, expandX, expandX + expandSize / 2},
+					new int[] {expandY - expandSize / 2, expandY, expandY - expandSize / 2}, 3);
 			g.setColor(Color.black);
 			g2.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_SQUARE, BasicStroke.JOIN_MITER, 10));
-			g.drawLine(expandX, expandY, expandX - expandSize/2, expandY - expandSize/2);
-			g.drawLine(expandX, expandY, expandX + expandSize/2, expandY - expandSize/2);
+			g.drawPolyline(
+					new int[] {expandX - expandSize / 2, expandX, expandX + expandSize / 2},
+					new int[] {expandY - expandSize / 2, expandY, expandY - expandSize / 2}, 3);
 		}
 		g2.setComposite(oldComp);
 	}
@@ -167,7 +169,7 @@ public class FileIcon extends JPanel {
 		} else if (dropdown != null) {
 			dropdown.showFor(this, true);
 		} else {
-			dropdown = new BDDropdown(SwingUtilities.getWindowAncestor(this), file);
+			dropdown = new BDDropdown(window, SwingUtilities.getWindowAncestor(this), file);
 			dropdown.showFor(this, true);
 		}
 	}
@@ -205,14 +207,41 @@ public class FileIcon extends JPanel {
 		return file;
 	}
 	
-	@SuppressWarnings("null")
-	private final static Image getIcon(final File file) {
+	private final File getIconCacheFile() {
+		return window.metaFolder.toPath().resolve(window.folder.toPath().relativize(fileToRun.toPath().resolveSibling(fileToRun.getName() + ".png"))).toFile();
+	}
+	
+	public final static @Nullable Path fileFromIconCacheFile(final BDWindow window, final Path iconCacheFile) {
+		final String name = iconCacheFile.getFileName().toString();
+		if (!name.endsWith(".png"))
+			return null;
+		return window.folder.toPath().resolve(window.metaFolder.toPath().relativize(iconCacheFile.resolveSibling(name.substring(0, name.length() - 4))));
+	}
+	
+	private final void updateIcon() {
 		try {
-			return ShellFolder.getShellFolder(file).getIcon(true);
-		} catch (final Exception e) {
-			e.printStackTrace();
-			return ((ImageIcon) FileSystemView.getFileSystemView().getSystemIcon(file)).getImage();
-		}
+			icon = ImageIO.read(getIconCacheFile());
+		} catch (final IOException e) {}
+		Main.threadPool.execute(() -> {
+			try {
+				icon = ShellFolder.getShellFolder(fileToRun).getIcon(true);
+				repaint();
+			} catch (final Exception e2) {
+				e2.printStackTrace();
+				icon = ((ImageIcon) FileSystemView.getFileSystemView().getSystemIcon(fileToRun)).getImage();
+				repaint();
+			}
+//				System.out.println(fi.icon.getClass());
+//				System.out.println(Arrays.asList(fi.icon.getClass().getDeclaredMethods()));
+			try {
+				final File iconCacheFile = getIconCacheFile();
+				iconCacheFile.mkdirs();
+				assert icon != null;
+				ImageIO.write(toRenderedImage(icon), "png", iconCacheFile);
+			} catch (final IOException e) {
+				e.printStackTrace();
+			}
+		});
 //		final SHFILEINFO[] info = {new SHFILEINFO()};
 //		Shell32.INSTANCE.SHGetFileInfo(file.getAbsolutePath(), Shell32.FILE_ATTRIBUTE_NORMAL, info, info[0].size(), Shell32.SHGFI_ICONLOCATION | Shell32.SHGFI_USEFILEATTRIBUTES);
 //		final int iconindex = info[0].iIcon;
@@ -224,8 +253,19 @@ public class FileIcon extends JPanel {
 //		if (success) {
 //			info2.hbmColor
 //		}
-//		
+//
 //		return ((ImageIcon) FileSystemView.getFileSystemView().getSystemIcon(file)).getImage();
+	}
+	
+	public static RenderedImage toRenderedImage(final Image img) {
+		if (img instanceof RenderedImage)
+			return (RenderedImage) img;
+		final int savedSize = 64;
+		final BufferedImage b = new BufferedImage(savedSize, savedSize, BufferedImage.TYPE_INT_ARGB);
+		final Graphics2D g = b.createGraphics();
+		g.drawImage(img, 0, 0, savedSize, savedSize, null);
+		g.dispose();
+		return b;
 	}
 	
 //	@SuppressWarnings("null")
@@ -238,5 +278,5 @@ public class FileIcon extends JPanel {
 //			e.printStackTrace();
 //		}
 //	}
-	
+
 }

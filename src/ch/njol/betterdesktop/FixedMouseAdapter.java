@@ -24,11 +24,9 @@ import java.awt.event.InputEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
-import javax.swing.SwingUtilities;
-
-import org.eclipse.jdt.annotation.NonNull;
-import org.eclipse.jdt.annotation.Nullable;
-
+/**
+ * A better mouse listener that allows clicks with small cursor movement between button press and release (especially useful for high DPI mouses)
+ */
 public class FixedMouseAdapter {
 	
 	private final static double CLICK_SENSITIVITY_SQ = 5 * 5;
@@ -133,5 +131,5 @@ public class FixedMouseAdapter {
 	protected void mouseEntered(final MouseEvent e) {}
 	
 	protected void mouseExited(final MouseEvent e) {}
-
+	
 }

@@ -29,13 +29,15 @@ import java.io.File;
 
 import javax.swing.JDialog;
 
+import org.eclipse.jdt.annotation.NonNull;
+
 public class BDDropdown extends JDialog {
 	private static final long serialVersionUID = -3839411082571168815L;
 	
 	private final Window parent;
 	private final BDFileContainer files;
 	
-	public BDDropdown(final Window parent, final File folder) {
+	public BDDropdown(BDWindow bdWindow, final Window parent, final File folder) {
 		this.parent = parent;
 		
 		setType(Type.POPUP);
@@ -45,7 +47,7 @@ public class BDDropdown extends JDialog {
 		setBackground(new Color(0, 0, 0, 200));
 //		setOpacity(Settings.opacity);
 		
-		add(files = new BDFileContainer(folder, false), BorderLayout.CENTER);
+		add(files = new BDFileContainer(bdWindow, folder, false), BorderLayout.CENTER);
 		files.setBackground(new Color(0, 0, 0));
 		final int n = files.numFiles();
 		int width = n <= 3 ? 1 : n <= 9 ? 2 : 3;

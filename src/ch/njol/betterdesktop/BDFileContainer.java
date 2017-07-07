@@ -37,6 +37,8 @@ import org.eclipse.jdt.annotation.NonNull;
 import org.eclipse.jdt.annotation.Nullable;
 
 public class BDFileContainer extends JPanel {
+
+	private final BDWindow window;
 	
 	public File folder;
 	
@@ -47,9 +49,10 @@ public class BDFileContainer extends JPanel {
 	private final boolean useFolder;
 	
 	private @Nullable BDFileContainerListener listener;
-	
+
 	// TODO cache this? or only the icons?
-	public BDFileContainer(final File folder, final boolean useFolder) {
+	public BDFileContainer(BDWindow window, final File folder, final boolean useFolder) {
+		this.window = window;
 		this.folder = folder;
 		this.useFolder = useFolder;
 		
@@ -80,7 +83,7 @@ public class BDFileContainer extends JPanel {
 			final File f = contents[i];
 			if (f.isHidden() || f.getName().startsWith("."))
 				continue;
-			add(new FileIcon(f, useFolder));
+			add(new FileIcon(window, f, useFolder));
 			if (i + 1 == MAX_FILES && i != contents.length - 1) {
 				final JLabel dots = new JLabel("...");
 				add(dots);

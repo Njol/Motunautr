@@ -28,7 +28,6 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.awt.geom.RoundRectangle2D;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -38,6 +37,7 @@ import java.io.OutputStreamWriter;
 import java.io.Reader;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 
 import javax.swing.JComponent;
 import javax.swing.JDialog;
@@ -52,10 +52,12 @@ import ch.njol.betterdesktop.BDFileContainer.BDFileContainerListener;
 
 // this is a JDialog so that it is focusable (to be able to easily close dropdown menus, and to hide the taskbar when clicked) but does not appear in the taskbar
 public class BDWindow extends JDialog implements BDFileContainerListener {
-	
+
+	public File folder;
+	public File metaFolder;
 	private File propFile;
 	
-	private class Props extends PropertiesEx {
+	private static class Props extends PropertiesEx {
 		int x, y, numFilesX = 4;
 	}
 	
@@ -64,12 +66,13 @@ public class BDWindow extends JDialog implements BDFileContainerListener {
 	private final JLabel title;
 	private final static int TITLE_HEIGHT = 20;
 	
-	private final BDFileContainer files;
+	public final BDFileContainer files;
 	
 	private final JComponent resizeArea;
 	private final static int RESIZE_AREA_WIDTH = 10;
 	
 	public BDWindow(final File folder) {
+		this.folder = folder;
 		
 		setLayout(null);
 		setUndecorated(true);
@@ -190,12 +193,15 @@ public class BDWindow extends JDialog implements BDFileContainerListener {
 		};
 		resizeArea.addMouseMotionListener(resizeListener);
 		resizeArea.addMouseListener(resizeListener);
+
+		metaFolder = new File(folder, ".motunautr");
 		
-		add(files = new BDFileContainer(folder, true));
+		add(files = new BDFileContainer(this, folder, true));
 		files.setListener(this);
+		
+		propFile = new File("."); // set just below; this just prevents a warning message
 		onReload();
 		
-		propFile = new File(folder, ".betterdesktop.properties");
 		if (propFile.exists()) {
 			try (Reader r = new InputStreamReader(new FileInputStream(propFile), StandardCharsets.UTF_8)) {
 				props.load(r);
@@ -206,12 +212,12 @@ public class BDWindow extends JDialog implements BDFileContainerListener {
 				e.printStackTrace();
 			}
 		}
-//		try {
-//			propFile.createNewFile();
-//			Files.setAttribute(propFile.toPath(), "dos:hidden", true); // makes the file read-only
-//		} catch (IOException e) {
-//			e.printStackTrace();
-//		}
+		try {
+			metaFolder.mkdir();
+			Files.setAttribute(metaFolder.toPath(), "dos:hidden", true);
+		} catch (final IOException e) {
+			e.printStackTrace();
+		}
 		
 	}
 	
@@ -272,8 +278,10 @@ public class BDWindow extends JDialog implements BDFileContainerListener {
 	
 	@Override
 	public void onReload() {
-		title.setText(files.folder.getName());
-		propFile = new File(files.folder, ".betterdesktop.properties");
+		folder = files.folder;
+		title.setText(folder.getName());
+		metaFolder = new File(folder, ".motunautr");
+		propFile = new File(metaFolder, "settings.properties");
 		setNumFilesX(props.numFilesX, true);
 		resizeArea.setVisible(files.numFiles() > 1);
 	}
