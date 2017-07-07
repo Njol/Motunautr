@@ -59,6 +59,7 @@ import com.sun.jna.Native;
 import com.sun.jna.platform.win32.User32;
 import com.sun.jna.platform.win32.WinDef.HWND;
 import com.sun.jna.platform.win32.WinUser;
+import com.sun.jna.platform.win32.WinUser.MSG;
 
 import ch.njol.betterdesktop.win32.Dwmapi;
 
@@ -75,6 +76,14 @@ public class Main {
 	
 	@SuppressWarnings("null")
 	public static Image icon;
+	
+	public static void allToFront() {
+		for (final BDWindow w : windows) {
+			w.toFront();
+			w.setAlwaysOnTop(true); // this works, the above line does not...
+			w.setAlwaysOnTop(false);
+		}
+	}
 	
 	public static void main(final String[] args) throws IOException, AWTException {
 		
@@ -149,11 +158,7 @@ public class Main {
 				} else if (e.getButton() == 2) {
 					System.exit(0);
 				} else {
-					for (final BDWindow w : windows) {
-						w.toFront();
-						w.setAlwaysOnTop(true); // this works, the above line does not...
-						w.setAlwaysOnTop(false);
-					}
+					allToFront();
 				}
 			}
 		});
@@ -182,8 +187,30 @@ public class Main {
 					w.setAlwaysOnTop(true); // not sure why this is required, maybe it just causes some update
 					w.setAlwaysOnTop(false);
 				}
+				
 			});
 		}
+		
+		// make windows key move all BD windows to front
+		final Thread t = new Thread(() -> {
+			final int VK_LWIN = 0x5B, VK_RWIN = 0x5C;
+			if (!User32.INSTANCE.RegisterHotKey(null, 1, WinUser.MOD_WIN, VK_LWIN)
+					|| !User32.INSTANCE.RegisterHotKey(null, 2, WinUser.MOD_WIN, VK_RWIN))
+				System.out.println("Failed to register windows key hooks");
+			
+			final MSG msg = new MSG();
+			while (User32.INSTANCE.GetMessage(msg, null, WinUser.WM_HOTKEY, WinUser.WM_HOTKEY) > 0) {
+				// wait for key release
+				while (User32.INSTANCE.GetAsyncKeyState(VK_LWIN) < 0 || User32.INSTANCE.GetAsyncKeyState(VK_RWIN) < 0) {
+					try {
+						Thread.sleep(10);
+					} catch (final InterruptedException e) {}
+				}
+				allToFront();
+			}
+		});
+		t.setDaemon(true);
+		t.start();
 		
 		try {
 			Thread.sleep(10000);

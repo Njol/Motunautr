@@ -23,7 +23,7 @@ import java.awt.Rectangle;
 
 public abstract class Utils {
 	
-	public static Point insert(Rectangle in, Rectangle bounds) {
+	public static Point insert(final Rectangle in, final Rectangle bounds) {
 		in.x -= Math.max(0, in.getMaxX() - bounds.getMaxX());
 		in.y -= Math.max(0, in.getMaxY() - bounds.getMaxY());
 		in.x += Math.max(0, bounds.getMinX() - in.getMinX());

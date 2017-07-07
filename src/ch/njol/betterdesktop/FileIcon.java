@@ -115,7 +115,7 @@ public class FileIcon extends JPanel {
 			@Override
 			public void mouseEntered(final MouseEvent e) {
 				hovered = true;
-				repaint();
+				window.repaint(); // bug workaround just like in BDWindow
 			}
 			
 			@Override

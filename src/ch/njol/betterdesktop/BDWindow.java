@@ -52,7 +52,7 @@ import ch.njol.betterdesktop.BDFileContainer.BDFileContainerListener;
 
 // this is a JDialog so that it is focusable (to be able to easily close dropdown menus, and to hide the taskbar when clicked) but does not appear in the taskbar
 public class BDWindow extends JDialog implements BDFileContainerListener {
-
+	
 	public File folder;
 	public File metaFolder;
 	private File propFile;
@@ -193,7 +193,7 @@ public class BDWindow extends JDialog implements BDFileContainerListener {
 		};
 		resizeArea.addMouseMotionListener(resizeListener);
 		resizeArea.addMouseListener(resizeListener);
-
+		
 		metaFolder = new File(folder, ".motunautr");
 		
 		add(files = new BDFileContainer(this, folder, true));

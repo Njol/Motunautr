@@ -37,7 +37,7 @@ import org.eclipse.jdt.annotation.NonNull;
 import org.eclipse.jdt.annotation.Nullable;
 
 public class BDFileContainer extends JPanel {
-
+	
 	private final BDWindow window;
 	
 	public File folder;
@@ -49,9 +49,9 @@ public class BDFileContainer extends JPanel {
 	private final boolean useFolder;
 	
 	private @Nullable BDFileContainerListener listener;
-
+	
 	// TODO cache this? or only the icons?
-	public BDFileContainer(BDWindow window, final File folder, final boolean useFolder) {
+	public BDFileContainer(final BDWindow window, final File folder, final boolean useFolder) {
 		this.window = window;
 		this.folder = folder;
 		this.useFolder = useFolder;
@@ -64,7 +64,7 @@ public class BDFileContainer extends JPanel {
 		reload();
 	}
 	
-	public void setListener(BDFileContainerListener listener) {
+	public void setListener(final BDFileContainerListener listener) {
 		this.listener = listener;
 	}
 	
@@ -121,8 +121,8 @@ public class BDFileContainer extends JPanel {
 	public int numFiles() {
 		return getComponentCount();
 	}
-
-	public void rename(File newFile) {
+	
+	public void rename(final File newFile) {
 		if (folder.renameTo(newFile)) {
 			folder = newFile;
 			if (listener != null)
