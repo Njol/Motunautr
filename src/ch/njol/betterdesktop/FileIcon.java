@@ -27,6 +27,7 @@ import java.awt.Dimension;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Image;
+import java.awt.Window;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.awt.image.RenderedImage;
@@ -115,7 +116,11 @@ public class FileIcon extends JPanel {
 			@Override
 			public void mouseEntered(final MouseEvent e) {
 				hovered = true;
-				window.repaint(); // bug workaround just like in BDWindow
+				final Window window = SwingUtilities.getWindowAncestor(FileIcon.this);
+				if (window instanceof BDWindow)
+					window.repaint(); // bug workaround just like in BDWindow
+				else
+					repaint();
 			}
 			
 			@Override

@@ -24,7 +24,6 @@ import java.util.List;
 import org.eclipse.jdt.annotation.NonNullByDefault;
 
 import com.sun.jna.Structure;
-import com.sun.jna.platform.win32.WinBase.WIN32_FIND_DATA;
 import com.sun.jna.platform.win32.WinDef.HICON;
 
 @NonNullByDefault({})

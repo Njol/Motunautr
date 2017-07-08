@@ -24,7 +24,7 @@ import com.sun.jna.platform.win32.BaseTSD.DWORD_PTR;
 
 public interface Shell32 extends Library {
 	public final static Shell32 INSTANCE = Native.loadLibrary("Shell32", Shell32.class);
-
+	
 	int MAX_PATH = 260;
 	
 	int FILE_ATTRIBUTE_NORMAL = 0x80;

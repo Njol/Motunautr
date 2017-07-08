@@ -32,10 +32,12 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.FileVisitResult;
+import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -44,8 +46,8 @@ import javax.imageio.ImageIO;
 import javax.swing.AbstractAction;
 import javax.swing.JFrame;
 import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
 import javax.swing.JPopupMenu;
-import javax.swing.JTextPane;
 import javax.swing.Popup;
 import javax.swing.PopupFactory;
 import javax.swing.ToolTipManager;
@@ -67,7 +69,7 @@ public class Main {
 	
 	public final static String NAME = "Mǫtunautr";
 	
-	private final static List<BDWindow> windows = new ArrayList<>();
+	private final static ConcurrentLinkedDeque<BDWindow> windows = new ConcurrentLinkedDeque<>();
 	
 	public final static ThreadPoolExecutor threadPool = new ThreadPoolExecutor(16, 16, 1, TimeUnit.MINUTES, new LinkedBlockingQueue<>());
 	static {
@@ -85,7 +87,7 @@ public class Main {
 		}
 	}
 	
-	public static void main(final String[] args) throws IOException, AWTException {
+	public static void main(final String[] args) {
 		
 		try {
 			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
@@ -97,6 +99,7 @@ public class Main {
 		ToolTipManager.sharedInstance().setInitialDelay(300);
 		ToolTipManager.sharedInstance().setReshowDelay(0);
 		
+		// change the ugly yellow tooltip background to white
 		PopupFactory.setSharedInstance(new PopupFactory() {
 			@Override
 			public @Nullable Popup getPopup(@Nullable final Component owner, final Component contents, final int x, final int y) throws IllegalArgumentException {
@@ -110,9 +113,27 @@ public class Main {
 			}
 		});
 		
-		Settings.load();
+		// settings
+		try {
+			Settings.load();
+		} catch (final IOException e2) {
+			JOptionPane.showMessageDialog(null, "Could not load settings: " + e2.getMessage() + ".\nThe default values will be used, including the default directory 'Desktop' in your documents folder.", NAME + ": Error", JOptionPane.ERROR_MESSAGE);
+		}
+		Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+			try {
+				Settings.save();
+				Settings.releaseLock();
+			} catch (final IOException e1) {
+				e1.printStackTrace();
+			}
+		}));
 		
-		icon = ImageIO.read(new File("./images/icon.png"));
+		// tray icon
+		try {
+			icon = ImageIO.read(new File("./images/icon.png"));
+		} catch (final IOException e2) {
+			System.exit(1);
+		}
 		final JPopupMenu trayPopup = new JPopupMenu();
 		trayPopup.add(new JMenuItem(new AbstractAction("settings...") {
 			@Override
@@ -125,24 +146,13 @@ public class Main {
 		trayPopup.add(new JMenuItem(new AbstractAction("help...") {
 			@Override
 			public void actionPerformed(final ActionEvent e) {
-				final JFrame f = new JFrame(Main.NAME + ": Help");
-				f.setIconImage(icon);
-				final JTextPane text = new JTextPane();
-				text.setText("Controls:\n"
-						+ "Right click on item: expand (only if item is actually a folder)\n"
-						+ "Double click on group title: open folder\n"
-						+ "Middle click on item or group title: rename file or folder");
-				text.setEditable(false);
-				f.add(text);
-				f.pack();
-				f.setLocationRelativeTo(null);
-				f.setVisible(true);
+				HelpWindow.doShow();
 			}
 		}));
 		trayPopup.add(new JMenuItem(new AbstractAction("close") {
 			@Override
 			public void actionPerformed(final ActionEvent e) {
-				System.exit(0); // settings should be saved immediately at all times
+				System.exit(0); // settings should be saved immediately at all times or in shutdown hooks
 			}
 		}));
 		final TrayIcon trayIcon = new TrayIcon(icon, NAME);
@@ -162,73 +172,132 @@ public class Main {
 				}
 			}
 		});
-		SystemTray.getSystemTray().add(trayIcon);
+		try {
+			SystemTray.getSystemTray().add(trayIcon);
+		} catch (final AWTException e2) {
+			System.err.println("Could not add tray icon: " + e2.getMessage());
+		}
 		
 		final HWND progman = User32.INSTANCE.FindWindow("Progman", "Program Manager");
 		
-		final File mainFolder = new File(Settings.directory);
+		// folder windows
+		final File mainFolder = new File(Settings.INSTANCE.directory.get());
+		mainFolder.mkdirs();
 		final @NonNull File[] contents = mainFolder.listFiles();
-		assert contents != null;
-		for (final File f : contents) {
-			if (f.isHidden() || f.getName().startsWith(".") || !f.isDirectory())
-				continue;
-			threadPool.execute(() -> {
-				final BDWindow w = new BDWindow(f);
-				windows.add(w);
-				w.pack();
-				w.setVisible(true);
-				
-				ch.njol.betterdesktop.win32.User32.enableBlur(w);
-				Dwmapi.setExcludedFromPeek(w, true);
-				
-				// prevents "show desktop" button from hiding the windows
-				if (progman != null) {
-					User32.INSTANCE.SetWindowLongPtr(new HWND(Native.getComponentPointer(w)), WinUser.GWL_HWNDPARENT, progman.getPointer());
-					w.setAlwaysOnTop(true); // not sure why this is required, maybe it just causes some update
-					w.setAlwaysOnTop(false);
-				}
-				
-			});
+		if (contents != null) {
+			for (final File f : contents) {
+				if (f.isHidden() || f.getName().startsWith(".") || !f.isDirectory())
+					continue;
+				threadPool.execute(() -> {
+					final BDWindow w = new BDWindow(f);
+					windows.add(w);
+					w.pack();
+					w.setVisible(true);
+					
+					// sets whether the windows blur the background behind them
+					Settings.INSTANCE.blurBackground.addListener(enabled -> {
+						ch.njol.betterdesktop.win32.User32.enableBlur(w, enabled);
+					});
+					
+					// disables the windows from being hidden when "peeking" the desktop
+					Settings.INSTANCE.excludeFromPeek.addListener(enabled -> {
+						Dwmapi.setExcludedFromPeek(w, enabled);
+					});
+					
+					// prevents "show desktop" button from hiding the windows
+					if (Settings.INSTANCE.showOnDesktop.get()) {
+						User32.INSTANCE.SetWindowLongPtr(new HWND(Native.getComponentPointer(w)), WinUser.GWL_HWNDPARENT, progman.getPointer());
+						// the following is required so that this setting actually does something - no idea why though
+						try {
+							Thread.sleep(100);
+						} catch (final InterruptedException e1) {}
+						w.setAlwaysOnTop(true);
+						w.setAlwaysOnTop(false);
+					}
+					
+				});
+			}
 		}
 		
-		// make windows key move all BD windows to front
-		final Thread t = new Thread(() -> {
-			final int VK_LWIN = 0x5B, VK_RWIN = 0x5C;
-			if (!User32.INSTANCE.RegisterHotKey(null, 1, WinUser.MOD_WIN, VK_LWIN)
-					|| !User32.INSTANCE.RegisterHotKey(null, 2, WinUser.MOD_WIN, VK_RWIN))
-				System.out.println("Failed to register windows key hooks");
-			
-			final MSG msg = new MSG();
-			while (User32.INSTANCE.GetMessage(msg, null, WinUser.WM_HOTKEY, WinUser.WM_HOTKEY) > 0) {
-				// wait for key release
-				while (User32.INSTANCE.GetAsyncKeyState(VK_LWIN) < 0 || User32.INSTANCE.GetAsyncKeyState(VK_RWIN) < 0) {
-					try {
-						Thread.sleep(10);
-					} catch (final InterruptedException e) {}
-				}
-				allToFront();
-			}
-		});
-		t.setDaemon(true);
-		t.start();
+		windowsKeyHandler.start();
 		
+		// clean up cached images of files that don't exist any more after a while
 		try {
 			Thread.sleep(10000);
 		} catch (final InterruptedException e) {}
-		
-		// clean up cached images of files that don't exist any more
 		for (final BDWindow w : windows) {
-			Files.walk(w.metaFolder.toPath()).forEach(p -> {
-				if (!p.getFileName().toString().endsWith(".png"))
-					return;
-				final Path file = FileIcon.fileFromIconCacheFile(w, p);
-				if (file == null || !file.toFile().exists()) {
-					System.out.println("Deleting cached icon for " + file);
-					p.toFile().delete();
-				}
-			});
+			try {
+				Files.walkFileTree(w.metaFolder.toPath(), new FileVisitor<Path>() {
+					@Override
+					public FileVisitResult preVisitDirectory(final Path dir, final BasicFileAttributes attrs) throws IOException {
+						return FileVisitResult.CONTINUE;
+					}
+					
+					@Override
+					public FileVisitResult visitFile(final Path file, final BasicFileAttributes attrs) throws IOException {
+						if (file.getFileName().toString().endsWith(".png")) {
+							final Path actualFile = FileIcon.fileFromIconCacheFile(w, file);
+							if (actualFile == null || !actualFile.toFile().exists()) {
+								System.out.println("Deleting cached icon for " + actualFile);
+								file.toFile().delete();
+							}
+						}
+						return FileVisitResult.CONTINUE;
+					}
+					
+					@Override
+					public FileVisitResult visitFileFailed(final Path file, final IOException exc) throws IOException {
+						return FileVisitResult.CONTINUE;
+					}
+					
+					@Override
+					public FileVisitResult postVisitDirectory(final Path dir, final @Nullable IOException exc) throws IOException {
+						final File f = dir.toFile();
+						if (f.list().length == 0) {
+							System.out.println("Deleting empty directory " + f);
+							f.delete();
+						}
+						return FileVisitResult.CONTINUE;
+					}
+				});
+			} catch (final IOException e1) {
+				// ignore
+			}
 		}
 		
+	}
+	
+	private static final Thread windowsKeyHandler = new Thread(() -> {
+		// if disabled in the beginning, don't even register
+		while (!Settings.INSTANCE.moveToFrontOnWindowsKey.get()) {
+			try {
+				synchronized (Settings.INSTANCE.moveToFrontOnWindowsKey) {
+					Settings.INSTANCE.moveToFrontOnWindowsKey.wait();
+				}
+			} catch (final InterruptedException e) {}
+		}
+		
+		final int VK_LWIN = 0x5B, VK_RWIN = 0x5C;
+		if (!User32.INSTANCE.RegisterHotKey(null, 1, WinUser.MOD_WIN, VK_LWIN)
+				|| !User32.INSTANCE.RegisterHotKey(null, 2, WinUser.MOD_WIN, VK_RWIN))
+			System.out.println("Failed to register windows key hooks");
+		
+		final MSG msg = new MSG();
+		while (User32.INSTANCE.GetMessage(msg, null, WinUser.WM_HOTKEY, WinUser.WM_HOTKEY) > 0) {
+			if (!Settings.INSTANCE.moveToFrontOnWindowsKey.get())
+				continue; // don't bother unregistering if the setting changed while active
+				
+			// wait for key release
+			while (User32.INSTANCE.GetAsyncKeyState(VK_LWIN) < 0 || User32.INSTANCE.GetAsyncKeyState(VK_RWIN) < 0) {
+				try {
+					Thread.sleep(10);
+				} catch (final InterruptedException e) {}
+			}
+			allToFront();
+		}
+	}, "Windows key handler");
+	static {
+		windowsKeyHandler.setDaemon(true);
 	}
 	
 }

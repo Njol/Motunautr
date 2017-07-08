@@ -40,6 +40,12 @@ public class PropertiesEx {
 			try {
 				if (f.getType() == int.class)
 					f.set(this, Integer.parseInt(val));
+				else if (f.getType() == float.class)
+					f.set(this, Float.parseFloat(val));
+				else if (f.getType() == String.class)
+					f.set(this, val);
+				else if (MonitoredValue.class.isAssignableFrom(f.getType()))
+					((MonitoredValue<?>) f.get(this)).setFromString(val);
 				else
 					throw new IllegalArgumentException("" + f);
 			} catch (final Exception e) {
@@ -50,7 +56,7 @@ public class PropertiesEx {
 	
 	public void save(final Writer w) throws IOException {
 		for (final Field f : getClass().getDeclaredFields()) {
-			if (Modifier.isStatic(f.getModifiers()) || Modifier.isTransient(f.getModifiers()))
+			if (Modifier.isStatic(f.getModifiers()) || Modifier.isTransient(f.getModifiers()) || f.getName().contains("$"))
 				continue;
 			try {
 				props.setProperty(f.getName(), "" + f.get(this));

@@ -30,9 +30,7 @@ import com.sun.jna.Pointer;
 import com.sun.jna.PointerType;
 import com.sun.jna.Structure;
 import com.sun.jna.platform.win32.WinDef.HWND;
-import com.sun.jna.ptr.ByteByReference;
 import com.sun.jna.ptr.IntByReference;
-import com.sun.jna.ptr.PointerByReference;
 
 public interface Dwmapi extends Library {
 	
@@ -60,18 +58,19 @@ public interface Dwmapi extends Library {
 	public static void setBlurBehind(final Window w, final boolean blur) {
 		final HWND hwnd = new HWND();
 		hwnd.setPointer(Native.getComponentPointer(w));
-//		final int error = 
+//		final int error =
 		INSTANCE.DwmEnableBlurBehindWindow(hwnd, new Dwmapi.DWM_BLURBEHIND[] {new DWM_BLURBEHIND(blur)});
 //		System.out.println(error);
 	}
 	
 	int DwmSetWindowAttribute(HWND hwnd, int dwAttribute, PointerType pvAttribute, int cbAttribute);
+	
 	int DWMWA_EXCLUDED_FROM_PEEK = 12;
-
+	
 	public static void setExcludedFromPeek(final Window w, final boolean excluded) {
 		final HWND hwnd = new HWND();
 		hwnd.setPointer(Native.getComponentPointer(w));
-//		final int error = 
+//		final int error =
 		INSTANCE.DwmSetWindowAttribute(hwnd, DWMWA_EXCLUDED_FROM_PEEK, new IntByReference(excluded ? 1 : 0), 4);
 //		System.out.println(error);
 	}

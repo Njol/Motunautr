@@ -50,7 +50,6 @@ public class BDFileContainer extends JPanel {
 	
 	private @Nullable BDFileContainerListener listener;
 	
-	// TODO cache this? or only the icons?
 	public BDFileContainer(final BDWindow window, final File folder, final boolean useFolder) {
 		this.window = window;
 		this.folder = folder;
@@ -62,6 +61,21 @@ public class BDFileContainer extends JPanel {
 		setOpaque(false);
 		
 		reload();
+		
+		// watch for file changes in the folder
+//		try (WatchService watcher = FileSystems.getDefault().newWatchService()) {
+//			folder.toPath().register(watcher, StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_DELETE, StandardWatchEventKinds.ENTRY_MODIFY);
+//			boolean running = true;
+//			while (running) {
+//				try {
+//					if (watcher.take().pollEvents().size() > 0) {
+//						reload();
+//					}
+//				} catch (InterruptedException e) {}
+//			}
+//		} catch (IOException e) {
+//			e.printStackTrace();
+//		}
 	}
 	
 	public void setListener(final BDFileContainerListener listener) {

@@ -138,7 +138,9 @@ public class BDWindow extends JDialog implements BDFileContainerListener {
 		};
 		ma.addToComponent(this);
 		
-		setBackground(new Color(0, 0, 0, 127));
+		Settings.INSTANCE.mainWindowOpacity.addListener(val -> {
+			setBackground(new Color(0, 0, 0, val));
+		});
 		getContentPane().setBackground(new Color(0, 0, 0, 0));
 		
 		add(title = new JLabel(folder.getName()));

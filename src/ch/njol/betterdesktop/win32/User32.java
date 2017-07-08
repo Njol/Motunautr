@@ -26,14 +26,13 @@ import com.sun.jna.Library;
 import com.sun.jna.Native;
 import com.sun.jna.Structure;
 import com.sun.jna.platform.win32.WinDef.HWND;
-import com.sun.xml.internal.bind.v2.runtime.property.StructureLoaderBuilder;
 
 public interface User32 extends Library {
 	public final static User32 INSTANCE = Native.loadLibrary("User32", User32.class);
 	
 	int SetWindowCompositionAttribute(HWND hwnd, WindowCompositionAttributeData data);
 	
-	int ACCENT_ENABLE_BLURBEHIND = 3;
+	int ACCENT_DISABLE = 0, ACCENT_ENABLE_BLURBEHIND = 3;
 	
 	class AccentPolicy extends Structure implements Structure.ByReference {
 		public int AccentState;
@@ -61,10 +60,10 @@ public interface User32 extends Library {
 		}
 	}
 	
-	static void enableBlur(final Window w) {
+	static void enableBlur(final Window w, final boolean enable) {
 		
 		final AccentPolicy accent = new AccentPolicy();
-		accent.AccentState = ACCENT_ENABLE_BLURBEHIND;
+		accent.AccentState = enable ? ACCENT_ENABLE_BLURBEHIND : ACCENT_DISABLE;
 		
 		final WindowCompositionAttributeData data = new WindowCompositionAttributeData();
 		data.Attribute = WCA_ACCENT_POLICY;
