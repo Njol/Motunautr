@@ -38,15 +38,15 @@ import java.io.Reader;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 
 import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
 import javax.swing.WindowConstants;
-
-import org.eclipse.jdt.annotation.NonNull;
 
 import ch.njol.betterdesktop.BDFileContainer.BDFileContainerListener;
 
@@ -189,7 +189,7 @@ public class BDWindow extends JDialog implements BDFileContainerListener {
 			}
 			
 			@Override
-			public void mouseEntered(@NonNull final MouseEvent e) {
+			public void mouseEntered(final MouseEvent e) {
 				BDWindow.this.repaint(); // same as above
 			}
 		};
@@ -198,7 +198,7 @@ public class BDWindow extends JDialog implements BDFileContainerListener {
 		
 		metaFolder = new File(folder, ".motunautr");
 		
-		add(files = new BDFileContainer(this, folder, true));
+		add(files = new BDFileContainer(this, folder, true, 100));
 		files.setListener(this);
 		
 		propFile = new File("."); // set just below; this just prevents a warning message
@@ -220,6 +220,25 @@ public class BDWindow extends JDialog implements BDFileContainerListener {
 		} catch (final IOException e) {
 			e.printStackTrace();
 		}
+		
+//		setDropTarget(new DropTa);
+//		setTransferHandler(new TransferHandler(null) {
+//
+//		});
+		
+		Main.watchDirectory(folder.toPath(), new FileWatcher.DirectoryListener(50) {
+			@Override
+			public boolean ignoreChange(final Path path) {
+				return path.startsWith(metaFolder.toPath().toAbsolutePath());
+			}
+			
+			@Override
+			public void directoryChanged() {
+				SwingUtilities.invokeLater(() -> {
+					files.reload();
+				});
+			}
+		});
 		
 	}
 	
@@ -244,7 +263,7 @@ public class BDWindow extends JDialog implements BDFileContainerListener {
 		
 		setSize(sizeX, sizeY);
 		
-		// blocky and blurred area is still rectangular
+		// blocky, and blurred area is still rectangular
 //		setShape(new RoundRectangle2D.Double(0, 0, sizeX, sizeY, 10, 10));
 	}
 	

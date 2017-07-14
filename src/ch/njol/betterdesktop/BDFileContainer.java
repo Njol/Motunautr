@@ -44,16 +44,17 @@ public class BDFileContainer extends JPanel {
 	
 	public final static int GAP_X = 5, GAP_Y = 5;
 	
-	public final static int MAX_FILES = 20;
-	
 	private final boolean useFolder;
 	
 	private @Nullable BDFileContainerListener listener;
 	
-	public BDFileContainer(final BDWindow window, final File folder, final boolean useFolder) {
+	private final int maxFiles;
+	
+	public BDFileContainer(final BDWindow window, final File folder, final boolean useFolder, final int maxFiles) {
 		this.window = window;
 		this.folder = folder;
 		this.useFolder = useFolder;
+		this.maxFiles = maxFiles;
 		
 		setLayout(new FlowLayout(FlowLayout.CENTER, GAP_X, GAP_Y));
 		
@@ -61,21 +62,6 @@ public class BDFileContainer extends JPanel {
 		setOpaque(false);
 		
 		reload();
-		
-		// watch for file changes in the folder
-//		try (WatchService watcher = FileSystems.getDefault().newWatchService()) {
-//			folder.toPath().register(watcher, StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_DELETE, StandardWatchEventKinds.ENTRY_MODIFY);
-//			boolean running = true;
-//			while (running) {
-//				try {
-//					if (watcher.take().pollEvents().size() > 0) {
-//						reload();
-//					}
-//				} catch (InterruptedException e) {}
-//			}
-//		} catch (IOException e) {
-//			e.printStackTrace();
-//		}
 	}
 	
 	public void setListener(final BDFileContainerListener listener) {
@@ -87,7 +73,6 @@ public class BDFileContainer extends JPanel {
 	}
 	
 	public void reload() {
-		
 		removeAll();
 		
 		final @NonNull File[] contents = folder.listFiles();
@@ -98,7 +83,7 @@ public class BDFileContainer extends JPanel {
 			if (f.isHidden() || f.getName().startsWith("."))
 				continue;
 			add(new FileIcon(window, f, useFolder));
-			if (i + 1 == MAX_FILES && i != contents.length - 1) {
+			if (i + 1 == maxFiles && i != contents.length - 1) {
 				final JLabel dots = new JLabel("...");
 				add(dots);
 				dots.setForeground(Color.white);
@@ -129,7 +114,6 @@ public class BDFileContainer extends JPanel {
 		
 		if (listener != null)
 			listener.onReload();
-		
 	}
 	
 	public int numFiles() {

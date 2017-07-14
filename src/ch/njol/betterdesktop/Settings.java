@@ -115,7 +115,7 @@ public class Settings extends PropertiesEx {
 				}
 			}
 		});
-		o.add(new JLabel("Main folder (requires restart): "));
+		o.add(new JLabel("Main folder: "));
 		o.add(folderField);
 		o.add(new JButton(new AbstractAction("...") {
 			@Override

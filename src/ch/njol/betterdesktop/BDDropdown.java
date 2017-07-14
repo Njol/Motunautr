@@ -45,7 +45,7 @@ public class BDDropdown extends JDialog {
 		setBackground(new Color(0, 0, 0, 200));
 //		setOpacity(Settings.opacity);
 		
-		add(files = new BDFileContainer(bdWindow, folder, false), BorderLayout.CENTER);
+		add(files = new BDFileContainer(bdWindow, folder, false, 20), BorderLayout.CENTER);
 		files.setBackground(new Color(0, 0, 0));
 		final int n = files.numFiles();
 		final int width = n <= 3 ? 1 : n <= 9 ? 2 : 3;

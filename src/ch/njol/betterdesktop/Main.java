@@ -36,6 +36,9 @@ import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardWatchEventKinds;
+import java.nio.file.WatchEvent.Kind;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -50,6 +53,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPopupMenu;
 import javax.swing.Popup;
 import javax.swing.PopupFactory;
+import javax.swing.SwingUtilities;
 import javax.swing.ToolTipManager;
 import javax.swing.UIManager;
 import javax.swing.UnsupportedLookAndFeelException;
@@ -63,6 +67,7 @@ import com.sun.jna.platform.win32.WinDef.HWND;
 import com.sun.jna.platform.win32.WinUser;
 import com.sun.jna.platform.win32.WinUser.MSG;
 
+import ch.njol.betterdesktop.FileWatcher.FileListener;
 import ch.njol.betterdesktop.win32.Dwmapi;
 
 public class Main {
@@ -70,6 +75,8 @@ public class Main {
 	public final static String NAME = "Mǫtunautr";
 	
 	private final static ConcurrentLinkedDeque<BDWindow> windows = new ConcurrentLinkedDeque<>();
+	
+	private static volatile @Nullable FileWatcher fileWatcher = null;
 	
 	public final static ThreadPoolExecutor threadPool = new ThreadPoolExecutor(16, 16, 1, TimeUnit.MINUTES, new LinkedBlockingQueue<>());
 	static {
@@ -178,46 +185,41 @@ public class Main {
 			System.err.println("Could not add tray icon: " + e2.getMessage());
 		}
 		
-		final HWND progman = User32.INSTANCE.FindWindow("Progman", "Program Manager");
-		
-		// folder windows
-		final File mainFolder = new File(Settings.INSTANCE.directory.get());
-		mainFolder.mkdirs();
-		final @NonNull File[] contents = mainFolder.listFiles();
-		if (contents != null) {
-			for (final File f : contents) {
-				if (f.isHidden() || f.getName().startsWith(".") || !f.isDirectory())
-					continue;
-				threadPool.execute(() -> {
-					final BDWindow w = new BDWindow(f);
-					windows.add(w);
-					w.pack();
-					w.setVisible(true);
-					
-					// sets whether the windows blur the background behind them
-					Settings.INSTANCE.blurBackground.addListener(enabled -> {
-						ch.njol.betterdesktop.win32.User32.enableBlur(w, enabled);
+		Settings.INSTANCE.directory.addListener(s -> {
+			final Path newFolder = Paths.get(s);
+			final FileWatcher oldWatcher = fileWatcher;
+			if ((oldWatcher == null || !newFolder.equals(oldWatcher.watchedDirectory)) && newFolder.toFile().isDirectory()) {
+				if (oldWatcher != null)
+					oldWatcher.close();
+				try {
+					final Path directory = Paths.get(s);
+					final FileWatcher newFileWatcher = new FileWatcher(directory);
+					fileWatcher = newFileWatcher;
+					newFileWatcher.addListener(directory, new FileListener() {
+						@Override
+						public void fileChanged(final Path path, final Kind<Path> kind) {
+							if (!path.getParent().equals(directory) || !path.toFile().isDirectory())
+								return;
+							if (kind == StandardWatchEventKinds.ENTRY_DELETE) {
+								for (final BDWindow w : windows) {
+									if (w.folder.toPath().equals(path))
+										w.dispose();
+								}
+							}
+							if (kind == StandardWatchEventKinds.ENTRY_CREATE) {
+								createWindow(path.toFile());
+							}
+						}
 					});
-					
-					// disables the windows from being hidden when "peeking" the desktop
-					Settings.INSTANCE.excludeFromPeek.addListener(enabled -> {
-						Dwmapi.setExcludedFromPeek(w, enabled);
-					});
-					
-					// prevents "show desktop" button from hiding the windows
-					if (Settings.INSTANCE.showOnDesktop.get()) {
-						User32.INSTANCE.SetWindowLongPtr(new HWND(Native.getComponentPointer(w)), WinUser.GWL_HWNDPARENT, progman.getPointer());
-						// the following is required so that this setting actually does something - no idea why though
-						try {
-							Thread.sleep(100);
-						} catch (final InterruptedException e1) {}
-						w.setAlwaysOnTop(true);
-						w.setAlwaysOnTop(false);
-					}
-					
-				});
+				} catch (final IOException e1) {
+					e1.printStackTrace();
+				}
+				for (final BDWindow w : windows) {
+					w.dispose();
+				}
+				createWindows();
 			}
-		}
+		});
 		
 		windowsKeyHandler.start();
 		
@@ -265,6 +267,60 @@ public class Main {
 			}
 		}
 		
+	}
+	
+	public static void watchDirectory(final Path relativePath, final FileWatcher.FileListener listener) {
+		final FileWatcher fileWatcher = Main.fileWatcher;
+		if (fileWatcher != null)
+			fileWatcher.addListener(relativePath, listener);
+	}
+	
+	private static void createWindows() {
+		final File mainFolder = new File(Settings.INSTANCE.directory.get());
+		mainFolder.mkdirs();
+		final @NonNull File[] contents = mainFolder.listFiles();
+		if (contents != null) {
+			for (final File f : contents) {
+				if (f.isHidden() || f.getName().startsWith(".") || !f.isDirectory())
+					continue;
+				createWindow(f);
+			}
+		}
+	}
+	
+	private static void createWindow(final File f) {
+		SwingUtilities.invokeLater(() -> {
+			if (!f.isDirectory()) // if the file was changed or deleted before this could execute, exit
+				return;
+			final BDWindow w = new BDWindow(f);
+			windows.add(w);
+			w.pack();
+			w.setVisible(true);
+			
+			threadPool.execute(() -> {
+				// sets whether the windows blur the background behind them
+				Settings.INSTANCE.blurBackground.addListener(enabled -> {
+					ch.njol.betterdesktop.win32.User32.enableBlur(w, enabled);
+				});
+				
+				// disables the windows from being hidden when "peeking" the desktop
+				Settings.INSTANCE.excludeFromPeek.addListener(enabled -> {
+					Dwmapi.setExcludedFromPeek(w, enabled);
+				});
+				
+				// prevents "show desktop" button from hiding the windows
+				if (Settings.INSTANCE.showOnDesktop.get()) {
+					final HWND progman = User32.INSTANCE.FindWindow("Progman", "Program Manager");
+					User32.INSTANCE.SetWindowLongPtr(new HWND(Native.getComponentPointer(w)), WinUser.GWL_HWNDPARENT, progman.getPointer());
+					// the following is required so that this setting actually does something - no idea why though
+					try {
+						Thread.sleep(100);
+					} catch (final InterruptedException e1) {}
+					w.setAlwaysOnTop(true);
+					w.setAlwaysOnTop(false);
+				}
+			});
+		});
 	}
 	
 	private static final Thread windowsKeyHandler = new Thread(() -> {

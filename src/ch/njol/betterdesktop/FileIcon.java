@@ -37,6 +37,7 @@ import java.nio.file.Path;
 import java.util.Arrays;
 
 import javax.imageio.ImageIO;
+import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -213,14 +214,14 @@ public class FileIcon extends JPanel {
 	}
 	
 	private final File getIconCacheFile() {
-		return window.metaFolder.toPath().resolve(window.folder.toPath().relativize(fileToRun.toPath().resolveSibling(fileToRun.getName() + ".png"))).toFile();
+		return window.metaFolder.toPath().resolve("iconcache").resolve(window.folder.toPath().relativize(fileToRun.toPath().resolveSibling(fileToRun.getName() + ".png"))).toFile();
 	}
 	
 	public final static @Nullable Path fileFromIconCacheFile(final BDWindow window, final Path iconCacheFile) {
 		final String name = iconCacheFile.getFileName().toString();
 		if (!name.endsWith(".png"))
 			return null;
-		return window.folder.toPath().resolve(window.metaFolder.toPath().relativize(iconCacheFile.resolveSibling(name.substring(0, name.length() - 4))));
+		return window.folder.toPath().resolve(window.metaFolder.toPath().resolve("iconcache").relativize(iconCacheFile.resolveSibling(name.substring(0, name.length() - 4))));
 	}
 	
 	private final void updateIcon() {
@@ -228,12 +229,16 @@ public class FileIcon extends JPanel {
 			icon = ImageIO.read(getIconCacheFile());
 		} catch (final IOException e) {}
 		Main.threadPool.execute(() -> {
+			if (!fileToRun.exists())
+				return;
 			try {
 				icon = ShellFolder.getShellFolder(fileToRun).getIcon(true);
 				repaint();
 			} catch (final Exception e2) {
 				e2.printStackTrace();
-				icon = ((ImageIcon) FileSystemView.getFileSystemView().getSystemIcon(fileToRun)).getImage();
+				final Icon ii = FileSystemView.getFileSystemView().getSystemIcon(fileToRun);
+				if (ii != null && ii instanceof ImageIcon)
+					icon = ((ImageIcon) ii).getImage();
 				repaint();
 			}
 //				System.out.println(fi.icon.getClass());
