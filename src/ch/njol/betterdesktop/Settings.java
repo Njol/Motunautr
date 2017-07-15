@@ -198,7 +198,9 @@ public class Settings extends PropertiesEx {
 	private static @Nullable FileLock lock;
 	
 	public static void load() throws IOException {
-		settingsFile = new RandomAccessFile("./settings.properties", "rw");
+		final File folder = new File(System.getProperty("user.home") + "/AppData/Roaming/Motunautr/");
+		folder.mkdirs();
+		settingsFile = new RandomAccessFile(new File(folder, "settings.properties"), "rw");
 		openChannel = settingsFile.getChannel();
 		lock = openChannel.tryLock();
 		if (lock == null) {
