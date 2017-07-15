@@ -40,6 +40,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JSlider;
 import javax.swing.JTextField;
+import javax.swing.SwingUtilities;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
@@ -72,141 +73,151 @@ public class Settings extends PropertiesEx {
 	
 	private static volatile @Nullable JFrame settingsWindow = null;
 	
-	public final static synchronized JFrame getSettingsWindow() {
-		if (settingsWindow != null)
-			return settingsWindow;
-		final JFrame f = new JFrame(Main.NAME + ": Settings");
-		f.setIconImage(Main.icon);
-		f.setContentPane(new JPanel());
-		((JPanel) f.getContentPane()).setBorder(new EmptyBorder(4, 8, 4, 8));
-		f.setLayout(new BoxLayout(f.getContentPane(), BoxLayout.Y_AXIS));
-		
-		// folder
-		JPanel o = new JPanel();
-		o.setLayout(new BoxLayout(o, BoxLayout.X_AXIS));
-		String folder;
-		try {
-			folder = new File(INSTANCE.directory.get()).getCanonicalPath();
-		} catch (final IOException e) {
-			folder = INSTANCE.directory.get();
-		}
-		final JTextField folderField = new JTextField(folder);
-		folderField.getDocument().addDocumentListener(new DocumentListener() {
-			@Override
-			public void removeUpdate(final DocumentEvent e) {
-				update();
-			}
-			
-			@Override
-			public void insertUpdate(final DocumentEvent e) {
-				update();
-			}
-			
-			@Override
-			public void changedUpdate(final DocumentEvent e) {
-				update();
-			}
-			
-			final char[] disallowedChars = "<>?|*\"".toCharArray();
-			
-			void update() {
-				String f = folderField.getText();
-				if (f == null)
-					f = "";
-				for (final char c : disallowedChars) {
-					if (f.indexOf(c) >= 0)
-						f = f.replace("" + c, "");
-				}
-				if (!f.equals(folderField.getText()))
-					folderField.setText(f);
-				if (new File(f).isDirectory()) {
-					folderField.setForeground(new Color(0, 0, 0));
-				} else {
-					folderField.setForeground(new Color(127, 0, 0));
-				}
-			}
-		});
-		o.add(new JLabel("Main folder: "));
-		o.add(folderField);
-		o.add(new JButton(new AbstractAction("...") {
-			@Override
-			public void actionPerformed(final ActionEvent e) {
-				final JFileChooser fc = new JFileChooser(INSTANCE.directory.get());
-				fc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-				if (fc.showDialog(f, "Select Directory") == JFileChooser.APPROVE_OPTION) {
-					try {
-						folderField.setText(fc.getSelectedFile().getCanonicalPath());
-					} catch (final IOException e1) {
-						folderField.setText(fc.getSelectedFile().toString());
-					}
-				}
-			}
-		}));
-		o.add(new JButton(new AbstractAction("Apply") {
-			@Override
-			public void actionPerformed(final ActionEvent e) {
-				String filePath = folderField.getText();
-				if (filePath == null)
-					filePath = "";
-				final File file = new File(filePath).getAbsoluteFile();
+	public final static void showSettingsWindow() {
+		SwingUtilities.invokeLater(() -> {
+			JFrame sw = Settings.settingsWindow;
+			if (sw == null) {
+				final JFrame settingsWindow = new JFrame(Main.NAME + ": Settings");
+				Settings.settingsWindow = sw = settingsWindow;
+				
+				settingsWindow.setIconImage(Main.icon);
+				settingsWindow.setContentPane(new JPanel());
+				((JPanel) settingsWindow.getContentPane()).setBorder(new EmptyBorder(4, 8, 4, 8));
+				settingsWindow.setLayout(new BoxLayout(settingsWindow.getContentPane(), BoxLayout.Y_AXIS));
+				
+				// folder
+				JPanel o = new JPanel();
+				o.setLayout(new BoxLayout(o, BoxLayout.X_AXIS));
+				String folder;
 				try {
-					Paths.get(file.toString());
-				} catch (final InvalidPathException ex) {
-					JOptionPane.showMessageDialog(f, "Invalid file path. Use the '...' button to manually select a path to get a valid path as starting point.", "Invalid path", JOptionPane.ERROR_MESSAGE);
-					return;
+					folder = new File(INSTANCE.directory.get()).getCanonicalPath();
+				} catch (final IOException e) {
+					folder = INSTANCE.directory.get();
 				}
-				if (!file.exists()) {
-					final int result = JOptionPane.showConfirmDialog(f, "The folder '" + file + "' does not exist. Do you want to create it?", "Folder does not exist", JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
-					if (result != JOptionPane.OK_OPTION)
-						return;
-					if (!file.mkdirs()) {
-						JOptionPane.showMessageDialog(f, "Could not create the directory. Make sure you have the rights to create it and any parent folders. Use a folder inside your Documents if possible.", "Error", JOptionPane.ERROR_MESSAGE);
-						return;
+				final JTextField folderField = new JTextField(folder);
+				folderField.getDocument().addDocumentListener(new DocumentListener() {
+					@Override
+					public void removeUpdate(final DocumentEvent e) {
+						update();
 					}
-				} else if (!file.isDirectory()) {
-					JOptionPane.showMessageDialog(f, "Please select a folder, not a file.", "Error: file selected", JOptionPane.ERROR_MESSAGE);
-					return;
-				}
-				folderField.setText(file.toString()); // update display (and possibly change to absolute path)
-				INSTANCE.directory.set(file.toString());
+					
+					@Override
+					public void insertUpdate(final DocumentEvent e) {
+						update();
+					}
+					
+					@Override
+					public void changedUpdate(final DocumentEvent e) {
+						update();
+					}
+					
+					final char[] disallowedChars = "<>?|*\"".toCharArray();
+					
+					void update() {
+						String f = folderField.getText();
+						if (f == null)
+							f = "";
+						for (final char c : disallowedChars) {
+							if (f.indexOf(c) >= 0)
+								f = f.replace("" + c, "");
+						}
+						if (!f.equals(folderField.getText()))
+							folderField.setText(f);
+						if (new File(f).isDirectory()) {
+							folderField.setForeground(new Color(0, 0, 0));
+						} else {
+							folderField.setForeground(new Color(127, 0, 0));
+						}
+					}
+				});
+				o.add(new JLabel("Main folder: "));
+				o.add(folderField);
+				o.add(new JButton(new AbstractAction("...") {
+					@Override
+					public void actionPerformed(final ActionEvent e) {
+						final JFileChooser fc = new JFileChooser(INSTANCE.directory.get());
+						fc.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+						if (fc.showDialog(settingsWindow, "Select Directory") == JFileChooser.APPROVE_OPTION) {
+							try {
+								folderField.setText(fc.getSelectedFile().getCanonicalPath());
+							} catch (final IOException e1) {
+								folderField.setText(fc.getSelectedFile().toString());
+							}
+						}
+					}
+				}));
+				o.add(new JButton(new AbstractAction("Apply") {
+					@Override
+					public void actionPerformed(final ActionEvent e) {
+						String filePath = folderField.getText();
+						if (filePath == null)
+							filePath = "";
+						final File file = new File(filePath).getAbsoluteFile();
+						try {
+							Paths.get(file.toString());
+						} catch (final InvalidPathException ex) {
+							JOptionPane.showMessageDialog(settingsWindow, "Invalid file path. Use the '...' button to manually select a path to get a valid path as starting point.", "Invalid path", JOptionPane.ERROR_MESSAGE);
+							return;
+						}
+						if (!file.exists()) {
+							final int result = JOptionPane.showConfirmDialog(settingsWindow, "The folder '" + file + "' does not exist. Do you want to create it?", "Folder does not exist", JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
+							if (result != JOptionPane.OK_OPTION)
+								return;
+							if (!file.mkdirs()) {
+								JOptionPane.showMessageDialog(settingsWindow, "Could not create the directory. Make sure you have the rights to create it and any parent folders. Use a folder inside your Documents if possible.", "Error", JOptionPane.ERROR_MESSAGE);
+								return;
+							}
+						} else if (!file.isDirectory()) {
+							JOptionPane.showMessageDialog(settingsWindow, "Please select a folder, not a file.", "Error: file selected", JOptionPane.ERROR_MESSAGE);
+							return;
+						}
+						folderField.setText(file.toString()); // update display (and possibly change to absolute path)
+						INSTANCE.directory.set(file.toString());
+					}
+				}));
+				settingsWindow.add(o);
+				
+				// opacity
+				o = new JPanel();
+				o.setLayout(new BoxLayout(o, BoxLayout.X_AXIS));
+				o.add(new JLabel("Background opacity: "));
+				o.add(new JSlider(INSTANCE.mainWindowOpacity.createModel(1, 255)));
+				settingsWindow.add(o);
+				
+				// simple options
+				settingsWindow.add(new JCheckBox(INSTANCE.blurBackground.createAction("Blur background")));
+				settingsWindow.add(new JCheckBox(INSTANCE.moveToFrontOnWindowsKey.createAction("Show icons when the Windows key is pressed")));
+				settingsWindow.add(new JCheckBox(INSTANCE.showOnDesktop.createAction("Don't hide icons when showing desktop (requires restart)")));
+				settingsWindow.add(new JCheckBox(INSTANCE.excludeFromPeek.createAction("Keep icons visible while previewing the desktop")));
+				
+				settingsWindow.pack();
 			}
-		}));
-		f.add(o);
-		
-		// opacity
-		o = new JPanel();
-		o.setLayout(new BoxLayout(o, BoxLayout.X_AXIS));
-		o.add(new JLabel("Background opacity: "));
-		o.add(new JSlider(INSTANCE.mainWindowOpacity.createModel(1, 255)));
-		f.add(o);
-		
-		// simple options
-		f.add(new JCheckBox(INSTANCE.blurBackground.createAction("Blur background")));
-		f.add(new JCheckBox(INSTANCE.moveToFrontOnWindowsKey.createAction("Show icons when the Windows key is pressed")));
-		f.add(new JCheckBox(INSTANCE.showOnDesktop.createAction("Don't hide icons when showing desktop (requires restart)")));
-		f.add(new JCheckBox(INSTANCE.excludeFromPeek.createAction("Keep icons visible while previewing the desktop")));
-		
-		f.pack();
-		settingsWindow = f;
-		return f;
+			sw.setVisible(true);
+			sw.setLocationRelativeTo(null);
+		});
 	}
 	
 	// saving & loading
 	
-	private static @Nullable RandomAccessFile settingsFile;
+//	private static @Nullable RandomAccessFile settingsFile;
 	private static @Nullable FileChannel openChannel;
 	private static @Nullable FileLock lock;
 	
 	public static void load() throws IOException {
 		final File folder = new File(System.getProperty("user.home") + "/AppData/Roaming/Motunautr/");
 		folder.mkdirs();
-		settingsFile = new RandomAccessFile(new File(folder, "settings.properties"), "rw");
+		final File file = new File(folder, "settings.properties");
+		@SuppressWarnings("resource") // deliberately not closed 
+		final RandomAccessFile settingsFile = new RandomAccessFile(file, "rw");
+//		Settings.settingsFile = settingsFile;
 		openChannel = settingsFile.getChannel();
 		lock = openChannel.tryLock();
 		if (lock == null) {
-			JOptionPane.showMessageDialog(null, "Already running!", "Error", JOptionPane.ERROR_MESSAGE);
+			JOptionPane.showMessageDialog(null, "Motunautr is already running!", "Error", JOptionPane.ERROR_MESSAGE);
 			System.exit(1);
 		}
+		if (settingsFile.length() == 0)
+			Main.isFirstRun = true;
 		INSTANCE.load(Channels.newReader(openChannel, "utf-8"));
 	}
 	

@@ -21,6 +21,8 @@ package ch.njol.betterdesktop;
 import java.awt.AWTException;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Desktop;
+import java.awt.Dialog.ModalityType;
 import java.awt.Image;
 import java.awt.MouseInfo;
 import java.awt.Point;
@@ -37,8 +39,6 @@ import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardWatchEventKinds;
-import java.nio.file.WatchEvent.Kind;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -47,7 +47,7 @@ import java.util.concurrent.TimeUnit;
 
 import javax.imageio.ImageIO;
 import javax.swing.AbstractAction;
-import javax.swing.JFrame;
+import javax.swing.JDialog;
 import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPopupMenu;
@@ -67,7 +67,6 @@ import com.sun.jna.platform.win32.WinDef.HWND;
 import com.sun.jna.platform.win32.WinUser;
 import com.sun.jna.platform.win32.WinUser.MSG;
 
-import ch.njol.betterdesktop.FileWatcher.FileListener;
 import ch.njol.betterdesktop.win32.Dwmapi;
 
 public class Main {
@@ -93,6 +92,8 @@ public class Main {
 			w.setAlwaysOnTop(false);
 		}
 	}
+	
+	static boolean isFirstRun = false; // set by settings
 	
 	public static void main(final String[] args) {
 		
@@ -145,9 +146,7 @@ public class Main {
 		trayPopup.add(new JMenuItem(new AbstractAction("settings...") {
 			@Override
 			public void actionPerformed(final ActionEvent e) {
-				final JFrame f = Settings.getSettingsWindow();
-				f.setVisible(true);
-				f.setLocationRelativeTo(null);
+				Settings.showSettingsWindow();
 			}
 		}));
 		trayPopup.add(new JMenuItem(new AbstractAction("help...") {
@@ -185,6 +184,13 @@ public class Main {
 			System.err.println("Could not add tray icon: " + e2.getMessage());
 		}
 		
+		boolean mainFolderExisted = false;
+		if (isFirstRun) {
+			final File mainFolder = new File(Settings.INSTANCE.directory.get());
+			if (mainFolder.isDirectory())
+				mainFolderExisted = true;
+			mainFolder.mkdirs();
+		}
 		Settings.INSTANCE.directory.addListener(s -> {
 			final Path newFolder = Paths.get(s);
 			final FileWatcher oldWatcher = fileWatcher;
@@ -195,20 +201,17 @@ public class Main {
 					final Path directory = Paths.get(s);
 					final FileWatcher newFileWatcher = new FileWatcher(directory);
 					fileWatcher = newFileWatcher;
-					newFileWatcher.addListener(directory, new FileListener() {
+					newFileWatcher.addListener(directory, new FileWatcher.DirectoryListener(500) {
 						@Override
-						public void fileChanged(final Path path, final Kind<Path> kind) {
-							if (!path.getParent().equals(directory) || !path.toFile().isDirectory())
-								return;
-							if (kind == StandardWatchEventKinds.ENTRY_DELETE) {
-								for (final BDWindow w : windows) {
-									if (w.folder.toPath().equals(path))
-										w.dispose();
-								}
-							}
-							if (kind == StandardWatchEventKinds.ENTRY_CREATE) {
-								createWindow(path.toFile());
-							}
+						public boolean ignoreChange(final Path path) {
+							return !path.getParent().equals(directory) || path.toFile().exists() && !path.toFile().isDirectory();
+						}
+						
+						@Override
+						public void directoryChanged() {
+							SwingUtilities.invokeLater(() -> {
+								createOrUpdateWindows();
+							});
 						}
 					});
 				} catch (final IOException e1) {
@@ -217,11 +220,47 @@ public class Main {
 				for (final BDWindow w : windows) {
 					w.dispose();
 				}
-				createWindows();
+				windows.clear();
+				createOrUpdateWindows();
 			}
 		});
 		
 		windowsKeyHandler.start();
+		
+		if (isFirstRun) {
+			final boolean mainFolderExisted2 = mainFolderExisted;
+			SwingUtilities.invokeLater(() -> {
+				final File mainFolder = new File(Settings.INSTANCE.directory.get());
+				if (mainFolderExisted2) { // maybe the settings were lost or reset?
+					JOptionPane.showMessageDialog(null, "Looks like Motunautr's settings were deleted or moved (or maybe you moved to a new computer?).\n"
+							+ "The settings window will now open, allowing you to set the options anew.", NAME + ": First Run", JOptionPane.INFORMATION_MESSAGE);
+					Settings.showSettingsWindow();
+				} else {
+					final File windowsDesktopFolder = new File(System.getProperty("user.home") + "/Desktop/");
+					new File(mainFolder, "Example Group").mkdir();
+					try {
+						Desktop.getDesktop().open(windowsDesktopFolder);
+						Desktop.getDesktop().open(mainFolder);
+					} catch (final IOException e1) {
+						e1.printStackTrace();
+					}
+					final JOptionPane p = new JOptionPane("Looks like this is your first time running Motunautr.\n"
+							+ "Motunautr opened your Windows Desktop folder as well as Motunautr's folder so that you can move your links into Motunautr groups.\n"
+							+ "There is an empty example group already created for you - it should be visible at the top left of your screen.\n"
+							+ "You can fill it with icons by moving links from the Desktop folder into the 'Example Group' folder.\n"
+							+ "You can rename, delete, or create groups by renaming, deleting, or creating folders in the 'Motunautr' folder.\n"
+							+ "For more information, right click the Motunautr icon in your task bar and click on 'Help' in the shown menu.",
+							JOptionPane.INFORMATION_MESSAGE, JOptionPane.DEFAULT_OPTION);
+					final JDialog d = p.createDialog(NAME + ": First Run");
+					d.pack();
+					d.setModalityType(ModalityType.MODELESS); // don't block other windows
+					d.setVisible(true);
+					d.setAlwaysOnTop(true); // the opened explorer windows are a bit delayed
+					d.requestFocus();
+					d.toFront();
+				}
+			});
+		}
 		
 		// clean up cached images of files that don't exist any more after a while
 		try {
@@ -275,16 +314,37 @@ public class Main {
 			fileWatcher.addListener(relativePath, listener);
 	}
 	
-	private static void createWindows() {
+	private static void createOrUpdateWindows() {
 		final File mainFolder = new File(Settings.INSTANCE.directory.get());
-		mainFolder.mkdirs();
 		final @NonNull File[] contents = mainFolder.listFiles();
 		if (contents != null) {
-			for (final File f : contents) {
+			// remove old windows
+			outer: for (final BDWindow w : windows) {
+				for (final File f : contents) {
+					if (w.folder.equals(f))
+						continue outer;
+				}
+				System.out.println("Removing old window for " + w.folder);
+				w.dispose();
+				windows.remove(w);
+			}
+			
+			// add new windows
+			outer: for (final File f : contents) {
 				if (f.isHidden() || f.getName().startsWith(".") || !f.isDirectory())
 					continue;
+				for (final BDWindow w : windows) {
+					if (w.folder.equals(f))
+						continue outer;
+				}
+				System.out.println("Adding new window for " + f);
 				createWindow(f);
 			}
+		} else {
+			for (final BDWindow w : windows) {
+				w.dispose();
+			}
+			windows.clear();
 		}
 	}
 	

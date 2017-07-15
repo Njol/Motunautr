@@ -33,8 +33,6 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.SwingConstants;
 
-import org.eclipse.jdt.annotation.Nullable;
-
 public class BDFileContainer extends JPanel {
 	
 	private final BDWindow window;
@@ -44,8 +42,6 @@ public class BDFileContainer extends JPanel {
 	public final static int GAP_X = 5, GAP_Y = 5;
 	
 	private final boolean useFolder;
-	
-	private @Nullable BDFileContainerListener listener;
 	
 	private final int maxFiles;
 	
@@ -61,14 +57,6 @@ public class BDFileContainer extends JPanel {
 		setOpaque(false);
 		
 		reload();
-	}
-	
-	public void setListener(final BDFileContainerListener listener) {
-		this.listener = listener;
-	}
-	
-	static interface BDFileContainerListener {
-		void onReload();
 	}
 	
 	public void reload() {
@@ -111,21 +99,11 @@ public class BDFileContainer extends JPanel {
 		}
 		
 		revalidate();
-		
-		if (listener != null)
-			listener.onReload();
+		repaint();
 	}
 	
 	public int numFiles() {
 		return getComponentCount();
-	}
-	
-	public void rename(final File newFile) {
-		if (folder.renameTo(newFile)) {
-			folder = newFile;
-			if (listener != null)
-				listener.onReload();
-		}
 	}
 	
 }

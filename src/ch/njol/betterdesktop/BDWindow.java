@@ -48,10 +48,8 @@ import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.WindowConstants;
 
-import ch.njol.betterdesktop.BDFileContainer.BDFileContainerListener;
-
 // this is a JDialog so that it is focusable (to be able to easily close dropdown menus, and to hide the taskbar when clicked) but does not appear in the taskbar
-public class BDWindow extends JDialog implements BDFileContainerListener {
+public class BDWindow extends JDialog {
 	
 	public File folder;
 	public File metaFolder;
@@ -139,7 +137,13 @@ public class BDWindow extends JDialog implements BDFileContainerListener {
 		ma.addToComponent(this);
 		
 		Settings.INSTANCE.mainWindowOpacity.addListener(val -> {
-			setBackground(new Color(0, 0, 0, val));
+			if (SwingUtilities.isEventDispatchThread()) {
+				setBackground(new Color(0, 0, 0, val));
+			} else {
+				SwingUtilities.invokeLater(() -> {
+					setBackground(new Color(0, 0, 0, val));
+				});
+			}
 		});
 		getContentPane().setBackground(new Color(0, 0, 0, 0));
 		
@@ -197,12 +201,12 @@ public class BDWindow extends JDialog implements BDFileContainerListener {
 		resizeArea.addMouseListener(resizeListener);
 		
 		metaFolder = new File(folder, ".motunautr");
+		propFile = new File(metaFolder, "settings.properties");
 		
-		add(files = new BDFileContainer(this, folder, true, 100));
-		files.setListener(this);
+		title.setText(folder.getName());
 		
-		propFile = new File("."); // set just below; this just prevents a warning message
-		onReload();
+		add(files = new BDFileContainer(this, folder, true, 200));
+		resizeArea.setVisible(files.numFiles() > 1);
 		
 		if (propFile.exists()) {
 			try (Reader r = new InputStreamReader(new FileInputStream(propFile), StandardCharsets.UTF_8)) {
@@ -213,9 +217,14 @@ public class BDWindow extends JDialog implements BDFileContainerListener {
 			} catch (final IOException e) {
 				e.printStackTrace();
 			}
+		} else {
+			setNumFilesX(props.numFilesX, false);
+			setLocation(Utils.insert(getBounds(), getGraphicsConfiguration().getBounds()));
+			saveLocation(); // create properties file
 		}
+		
+		metaFolder.mkdir();
 		try {
-			metaFolder.mkdir();
 			Files.setAttribute(metaFolder.toPath(), "dos:hidden", true);
 		} catch (final IOException e) {
 			e.printStackTrace();
@@ -226,14 +235,15 @@ public class BDWindow extends JDialog implements BDFileContainerListener {
 //
 //		});
 		
-		Main.watchDirectory(folder.toPath(), new FileWatcher.DirectoryListener(50) {
+		Main.watchDirectory(folder.toPath(), new FileWatcher.DirectoryListener(200) {
 			@Override
 			public boolean ignoreChange(final Path path) {
-				return path.startsWith(metaFolder.toPath().toAbsolutePath());
+				return path.equals(folder.toPath()) || path.startsWith(metaFolder.toPath().toAbsolutePath());
 			}
 			
 			@Override
 			public void directoryChanged() {
+				System.out.println("Folder " + files.folder + " changed, reloading window");
 				SwingUtilities.invokeLater(() -> {
 					files.reload();
 				});
@@ -297,22 +307,12 @@ public class BDWindow extends JDialog implements BDFileContainerListener {
 		super.doLayout(); // this is required for some reason
 	}
 	
-	@Override
-	public void onReload() {
-		folder = files.folder;
-		title.setText(folder.getName());
-		metaFolder = new File(folder, ".motunautr");
-		propFile = new File(metaFolder, "settings.properties");
-		setNumFilesX(props.numFilesX, true);
-		resizeArea.setVisible(files.numFiles() > 1);
-	}
-	
 	private void startRename() {
 		final String name = files.folder.getName();
 		final String newName = (String) JOptionPane.showInputDialog(null, "", "Rename", JOptionPane.PLAIN_MESSAGE, null, null, name);
 		if (newName != null) {
 			final File newFile = new File(files.folder.getParentFile(), newName);
-			files.rename(newFile);
+			files.folder.renameTo(newFile);
 		}
 	}
 	

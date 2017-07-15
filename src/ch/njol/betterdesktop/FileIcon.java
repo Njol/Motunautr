@@ -31,8 +31,10 @@ import java.awt.Window;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.awt.image.RenderedImage;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 
@@ -243,13 +245,26 @@ public class FileIcon extends JPanel {
 			}
 //				System.out.println(fi.icon.getClass());
 //				System.out.println(Arrays.asList(fi.icon.getClass().getDeclaredMethods()));
-			try {
-				final File iconCacheFile = getIconCacheFile();
-				iconCacheFile.mkdirs();
-				assert icon != null;
-				ImageIO.write(toRenderedImage(icon), "png", iconCacheFile);
-			} catch (final IOException e) {
-				e.printStackTrace();
+			if (icon != null) {
+				// Save icon to cache, but onnly if the file doesn't exist yet or has a different content.
+				try {
+					final File iconCacheFile = getIconCacheFile();
+					iconCacheFile.getParentFile().mkdirs();
+					final ByteArrayOutputStream dataStream = new ByteArrayOutputStream();
+					assert icon != null;
+					ImageIO.write(toRenderedImage(icon), "png", dataStream);
+					final byte[] data = dataStream.toByteArray();
+					byte[] existingData = null;
+					try {
+						existingData = Files.readAllBytes(iconCacheFile.toPath());
+					} catch (final IOException e) {}
+					if (!Arrays.equals(data, existingData)) {
+						System.out.println("saving cached icon for " + file);
+						Files.write(iconCacheFile.toPath(), data);
+					}
+				} catch (final IOException e) {
+					e.printStackTrace();
+				}
 			}
 		});
 //		final SHFILEINFO[] info = {new SHFILEINFO()};

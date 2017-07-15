@@ -20,21 +20,16 @@ package ch.njol.betterdesktop;
 
 import java.io.IOException;
 import java.nio.file.FileSystems;
-import java.nio.file.FileVisitResult;
-import java.nio.file.FileVisitor;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchEvent.Kind;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentSkipListSet;
 
-import org.eclipse.jdt.annotation.Nullable;
+import com.sun.nio.file.ExtendedWatchEventModifier;
 
 public class FileWatcher {
 	
@@ -59,13 +54,15 @@ public class FileWatcher {
 		private volatile long nextUpdate;
 		
 		@Override
-		public int compareTo(final DirectoryListener o) {
+		public final int compareTo(final DirectoryListener o) {
+			if (o == this)
+				return 0;
 			final long tu = nextUpdate, ou = o.nextUpdate;
 			return tu < ou ? -1 : tu > ou ? 1 : 0;
 		}
 		
 		@Override
-		public void fileChanged(final Path path, final Kind<Path> kind) {
+		public final void fileChanged(final Path path, final Kind<Path> kind) {
 			if (ignoreChange(path))
 				return;
 			listenersToUpdate.remove(this);
@@ -104,14 +101,14 @@ public class FileWatcher {
 					// if there is an event, wait until its desired update time or until notified again, in which case restart the whole loop
 					// (maybe another listener got an earlier time now that the one we're waiting for if both got new events)
 					final long nextUpdate = next.nextUpdate;
-					final long now = System.currentTimeMillis();
-					if (nextUpdate > now) {
+					final long toWait = nextUpdate - System.currentTimeMillis();
+					if (toWait > 0) {
 						synchronized (this) {
 							try {
-								this.wait(nextUpdate - now);
-							} catch (final InterruptedException e) {
+								this.wait(toWait);
+							} catch (final InterruptedException e) {}
+							if (nextUpdate > System.currentTimeMillis())
 								continue;
-							}
 						}
 					}
 					
@@ -160,16 +157,13 @@ public class FileWatcher {
 			while (running) {
 				try {
 					final WatchKey watchKey = watcher.take();
-					final Path dir = registeredPaths.get(watchKey);
-					if (dir == null)
-						continue;
 					for (final WatchEvent<?> event : watchKey.pollEvents()) {
 						Path changed = (Path) event.context();
 						if (changed == null || event.kind() == StandardWatchEventKinds.OVERFLOW) {
 							System.out.println("bad file watch event: " + event);
 							continue;
 						}
-						changed = dir.resolve(changed);
+						changed = watchedDirectory.resolve(changed);
 						for (final ListenerAndPath x : listeners) {
 							if (Thread.interrupted())
 								return;
@@ -177,11 +171,8 @@ public class FileWatcher {
 								x.listener.fileChanged(changed, (Kind<Path>) event.kind());
 							}
 						}
-						if (changed.toFile().isDirectory())
-							registerDirectory(changed);
 					}
-					if (!watchKey.reset())
-						registeredPaths.remove(watchKey);
+					watchKey.reset();
 				} catch (final InterruptedException e) {}
 			}
 		}
@@ -192,41 +183,9 @@ public class FileWatcher {
 	public FileWatcher(final Path watchedDirectory) throws IOException {
 		this.watchedDirectory = toCanonicalPath(watchedDirectory);
 		watcher = FileSystems.getDefault().newWatchService();
-		registerDirectory(watchedDirectory);
+		watchedDirectory.register(watcher, new Kind[] {StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_DELETE}, ExtendedWatchEventModifier.FILE_TREE);
 		thread.setDaemon(true);
 		thread.start();
-	}
-	
-	private final ConcurrentHashMap<WatchKey, Path> registeredPaths = new ConcurrentHashMap<>();
-	
-	private void registerDirectory(final Path directory) {
-		try {
-			Files.walkFileTree(directory, new FileVisitor<Path>() {
-				@Override
-				public FileVisitResult preVisitDirectory(final Path dir, final BasicFileAttributes attrs) throws IOException {
-					final WatchKey watchKey = dir.register(watcher, StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_DELETE, StandardWatchEventKinds.ENTRY_MODIFY);
-					registeredPaths.put(watchKey, dir);
-					return FileVisitResult.CONTINUE;
-				}
-				
-				@Override
-				public FileVisitResult visitFile(final Path file, final BasicFileAttributes attrs) throws IOException {
-					return FileVisitResult.CONTINUE;
-				}
-				
-				@Override
-				public FileVisitResult visitFileFailed(final Path file, final IOException exc) throws IOException {
-					return FileVisitResult.CONTINUE;
-				}
-				
-				@Override
-				public FileVisitResult postVisitDirectory(final Path dir, @Nullable final IOException exc) throws IOException {
-					return FileVisitResult.CONTINUE;
-				}
-			});
-		} catch (final IOException e) {
-			e.printStackTrace();
-		}
 	}
 	
 	public void close() {
