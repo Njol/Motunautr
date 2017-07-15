@@ -26,6 +26,8 @@ import java.io.RandomAccessFile;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Paths;
 
 import javax.swing.AbstractAction;
 import javax.swing.BoxLayout;
@@ -55,7 +57,7 @@ public class Settings extends PropertiesEx {
 	
 	// actual settings
 	
-	public MonitoredString directory = new MonitoredString(System.getProperty("user.home") + "/Documents/Desktop/");
+	public MonitoredString directory = new MonitoredString(System.getProperty("user.home") + "/Documents/Motunautr/");
 	
 	public MonitoredBoolean blurBackground = new MonitoredBoolean(true);
 	public MonitoredInteger mainWindowOpacity = new MonitoredInteger(127);
@@ -105,10 +107,19 @@ public class Settings extends PropertiesEx {
 				update();
 			}
 			
+			final char[] disallowedChars = "<>?|*\"".toCharArray();
+			
 			void update() {
-				final String f = "" + folderField.getText();
-				if (new File(f).exists()) {
-					INSTANCE.directory.set(f);
+				String f = folderField.getText();
+				if (f == null)
+					f = "";
+				for (final char c : disallowedChars) {
+					if (f.indexOf(c) >= 0)
+						f = f.replace("" + c, "");
+				}
+				if (!f.equals(folderField.getText()))
+					folderField.setText(f);
+				if (new File(f).isDirectory()) {
 					folderField.setForeground(new Color(0, 0, 0));
 				} else {
 					folderField.setForeground(new Color(127, 0, 0));
@@ -129,6 +140,35 @@ public class Settings extends PropertiesEx {
 						folderField.setText(fc.getSelectedFile().toString());
 					}
 				}
+			}
+		}));
+		o.add(new JButton(new AbstractAction("Apply") {
+			@Override
+			public void actionPerformed(final ActionEvent e) {
+				String filePath = folderField.getText();
+				if (filePath == null)
+					filePath = "";
+				final File file = new File(filePath).getAbsoluteFile();
+				try {
+					Paths.get(file.toString());
+				} catch (final InvalidPathException ex) {
+					JOptionPane.showMessageDialog(f, "Invalid file path. Use the '...' button to manually select a path to get a valid path as starting point.", "Invalid path", JOptionPane.ERROR_MESSAGE);
+					return;
+				}
+				if (!file.exists()) {
+					final int result = JOptionPane.showConfirmDialog(f, "The folder '" + file + "' does not exist. Do you want to create it?", "Folder does not exist", JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
+					if (result != JOptionPane.OK_OPTION)
+						return;
+					if (!file.mkdirs()) {
+						JOptionPane.showMessageDialog(f, "Could not create the directory. Make sure you have the rights to create it and any parent folders. Use a folder inside your Documents if possible.", "Error", JOptionPane.ERROR_MESSAGE);
+						return;
+					}
+				} else if (!file.isDirectory()) {
+					JOptionPane.showMessageDialog(f, "Please select a folder, not a file.", "Error: file selected", JOptionPane.ERROR_MESSAGE);
+					return;
+				}
+				folderField.setText(file.toString()); // update display (and possibly change to absolute path)
+				INSTANCE.directory.set(file.toString());
 			}
 		}));
 		f.add(o);

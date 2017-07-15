@@ -33,7 +33,6 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.SwingConstants;
 
-import org.eclipse.jdt.annotation.NonNull;
 import org.eclipse.jdt.annotation.Nullable;
 
 public class BDFileContainer extends JPanel {
@@ -75,38 +74,39 @@ public class BDFileContainer extends JPanel {
 	public void reload() {
 		removeAll();
 		
-		final @NonNull File[] contents = folder.listFiles();
-		assert contents != null;
-		Arrays.sort(contents);
-		for (int i = 0; i < contents.length; i++) {
-			final File f = contents[i];
-			if (f.isHidden() || f.getName().startsWith("."))
-				continue;
-			add(new FileIcon(window, f, useFolder));
-			if (i + 1 == maxFiles && i != contents.length - 1) {
-				final JLabel dots = new JLabel("...");
-				add(dots);
-				dots.setForeground(Color.white);
-				dots.setBackground(null);
-				dots.setFont(dots.getFont().deriveFont(Font.BOLD, 20f));
-				dots.setMinimumSize(new Dimension(FileIcon.SIZE_X, FileIcon.SIZE_Y));
-				dots.setPreferredSize(dots.getMinimumSize());
-				dots.setVerticalAlignment(SwingConstants.CENTER);
-				dots.setHorizontalAlignment(SwingConstants.CENTER);
-				dots.setToolTipText("Too many files; click to open folder in explorer.");
-				dots.addMouseListener(new MouseAdapter() {
-					@Override
-					public void mouseClicked(final MouseEvent e) {
-						if (e.getButton() == 1) {
-							try {
-								Desktop.getDesktop().open(folder);
-							} catch (final IOException e1) {
-								e1.printStackTrace();
+		final File[] contents = folder.listFiles();
+		if (contents != null) {
+			Arrays.sort(contents);
+			for (int i = 0; i < contents.length; i++) {
+				final File f = contents[i];
+				if (f.isHidden() || f.getName().startsWith("."))
+					continue;
+				add(new FileIcon(window, f, useFolder));
+				if (i + 1 == maxFiles && i != contents.length - 1) {
+					final JLabel dots = new JLabel("...");
+					add(dots);
+					dots.setForeground(Color.white);
+					dots.setBackground(null);
+					dots.setFont(dots.getFont().deriveFont(Font.BOLD, 20f));
+					dots.setMinimumSize(new Dimension(FileIcon.SIZE_X, FileIcon.SIZE_Y));
+					dots.setPreferredSize(dots.getMinimumSize());
+					dots.setVerticalAlignment(SwingConstants.CENTER);
+					dots.setHorizontalAlignment(SwingConstants.CENTER);
+					dots.setToolTipText("Too many files; click to open folder in explorer.");
+					dots.addMouseListener(new MouseAdapter() {
+						@Override
+						public void mouseClicked(final MouseEvent e) {
+							if (e.getButton() == 1) {
+								try {
+									Desktop.getDesktop().open(folder);
+								} catch (final IOException e1) {
+									e1.printStackTrace();
+								}
 							}
 						}
-					}
-				});
-				break;
+					});
+					break;
+				}
 			}
 		}
 		
