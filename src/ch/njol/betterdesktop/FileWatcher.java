@@ -27,7 +27,7 @@ import java.nio.file.WatchEvent.Kind;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
 import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.PriorityBlockingQueue;
 
 import com.sun.nio.file.ExtendedWatchEventModifier;
 
@@ -54,10 +54,10 @@ public class FileWatcher {
 		private volatile long nextUpdate;
 		
 		@Override
-		public final int compareTo(final DirectoryListener o) {
-			if (o == this)
+		public final int compareTo(final DirectoryListener other) {
+			if (other == this)
 				return 0;
-			final long tu = nextUpdate, ou = o.nextUpdate;
+			final long tu = nextUpdate, ou = other.nextUpdate;
 			return tu < ou ? -1 : tu > ou ? 1 : 0;
 		}
 		
@@ -65,12 +65,12 @@ public class FileWatcher {
 		public final void fileChanged(final Path path, final Kind<Path> kind) {
 			if (ignoreChange(path))
 				return;
-			listenersToUpdate.remove(this);
-			nextUpdate = System.currentTimeMillis() + delayMS;
-			listenersToUpdate.add(this);
-			synchronized (thread) {
-				thread.notifyAll();
+			synchronized (listenersToUpdate) { // make this section atomic with regard to the one in the thread
+				listenersToUpdate.remove(this);
+				nextUpdate = System.currentTimeMillis() + delayMS;
+				listenersToUpdate.add(this);
 			}
+			thread.interrupt();
 		}
 		
 		public boolean ignoreChange(final Path path) {
@@ -79,22 +79,18 @@ public class FileWatcher {
 		
 		public abstract void directoryChanged();
 		
-		private static ConcurrentSkipListSet<DirectoryListener> listenersToUpdate = new ConcurrentSkipListSet<>();
+		private static PriorityBlockingQueue<DirectoryListener> listenersToUpdate = new PriorityBlockingQueue<>();
 		
 		// a single thread should be enough - this program doesn't listen to hundreds of folders
 		private static Thread thread = new Thread() {
 			@Override
 			public void run() {
 				while (true) {
-					final DirectoryListener next = listenersToUpdate.pollFirst();
+					final DirectoryListener next;
 					
-					// wait indefinitely while there is nothing to do
-					if (next == null) {
-						try {
-							synchronized (this) {
-								this.wait();
-							}
-						} catch (final InterruptedException e) {}
+					try {
+						next = listenersToUpdate.take();
+					} catch (final InterruptedException e) {
 						continue;
 					}
 					
@@ -105,14 +101,20 @@ public class FileWatcher {
 					if (toWait > 0) {
 						synchronized (this) {
 							try {
-								this.wait(toWait);
+								Thread.sleep(toWait);
 							} catch (final InterruptedException e) {}
-							if (nextUpdate > System.currentTimeMillis())
-								continue;
+						}
+						if (nextUpdate > System.currentTimeMillis()) {
+							// if we're interrupted early, re-add the listener to the queue and restart with taking the earliest listener (which may be this one or not)
+							synchronized (listenersToUpdate) {
+								// the listener can already be in the queue if an event happened while waiting
+								if (!listenersToUpdate.contains(next))
+									listenersToUpdate.add(next);
+							}
+							continue;
 						}
 					}
 					
-					listenersToUpdate.remove(next);
 					next.directoryChanged();
 				}
 			}
@@ -165,7 +167,7 @@ public class FileWatcher {
 						}
 						changed = watchedDirectory.resolve(changed);
 						for (final ListenerAndPath x : listeners) {
-							if (Thread.interrupted())
+							if (Thread.interrupted() && !running)
 								return;
 							if (changed.startsWith(x.startPath)) {
 								x.listener.fileChanged(changed, (Kind<Path>) event.kind());
@@ -183,7 +185,7 @@ public class FileWatcher {
 	public FileWatcher(final Path watchedDirectory) throws IOException {
 		this.watchedDirectory = toCanonicalPath(watchedDirectory);
 		watcher = FileSystems.getDefault().newWatchService();
-		watchedDirectory.register(watcher, new Kind[] {StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_DELETE}, ExtendedWatchEventModifier.FILE_TREE);
+		watchedDirectory.register(watcher, new Kind[] {StandardWatchEventKinds.ENTRY_CREATE, StandardWatchEventKinds.ENTRY_DELETE, StandardWatchEventKinds.ENTRY_MODIFY}, ExtendedWatchEventModifier.FILE_TREE);
 		thread.setDaemon(true);
 		thread.start();
 	}

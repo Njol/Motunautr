@@ -411,7 +411,7 @@ public class Main {
 			}
 			allToFront();
 		}
-	}, "Windows key handler");
+	}, "Windows-key handler");
 	static {
 		windowsKeyHandler.setDaemon(true);
 	}

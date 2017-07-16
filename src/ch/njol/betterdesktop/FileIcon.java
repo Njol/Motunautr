@@ -46,6 +46,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.TransferHandler;
 import javax.swing.filechooser.FileSystemView;
 
 import org.eclipse.jdt.annotation.NonNull;
@@ -55,12 +56,12 @@ import sun.awt.shell.ShellFolder;
 
 public class FileIcon extends JPanel {
 	
-	private final BDWindow window;
+	private final BDFileContainer fileContainer;
 	
-	private final File file;
-	private final File fileToRun;
+	public final File file;
+	public final File fileToRun;
 	private final boolean isExpandable;
-	private @Nullable Image icon;
+	public @Nullable Image icon;
 	private final JLabel /*iconLabel, */ nameLabel;
 	
 	private boolean hovered = false;
@@ -70,10 +71,13 @@ public class FileIcon extends JPanel {
 	private final static int ICON_SIZE = 32;
 	private final static int LABEL_HEIGHT = SIZE_Y - 2 * PADDING_Y - ICON_SIZE;
 	
-	public FileIcon(final BDWindow window, final File file, final boolean useFolder) {
-		this.window = window;
+	public FileIcon(final BDFileContainer fileContainer, final File file, final boolean useFolder) {
+		this.fileContainer = fileContainer;
 		this.file = file;
-		fileToRun = useFolder ? getFileToRun(file) : file;
+		fileToRun = getFileToRun(file, useFolder);
+		
+		setTransferHandler(fileContainer.transferHandler);
+		fileContainer.createDropTarget(this);
 		
 		updateIcon();
 		
@@ -131,6 +135,11 @@ public class FileIcon extends JPanel {
 				hovered = false;
 				repaint();
 			}
+			
+			@Override
+			protected void mouseDragStarted(final MouseEvent e) {
+				getTransferHandler().exportAsDrag(FileIcon.this, e, TransferHandler.MOVE);
+			}
 		};
 		ma.addToComponent(this);
 	}
@@ -177,7 +186,7 @@ public class FileIcon extends JPanel {
 		} else if (dropdown != null) {
 			dropdown.showFor(this, true);
 		} else {
-			dropdown = new BDDropdown(window, SwingUtilities.getWindowAncestor(this), file);
+			dropdown = new BDDropdown(fileContainer.window, SwingUtilities.getWindowAncestor(this), file);
 			dropdown.showFor(this, true);
 		}
 	}
@@ -198,7 +207,9 @@ public class FileIcon extends JPanel {
 		}
 	}
 	
-	private final static File getFileToRun(final File file) {
+	public final static File getFileToRun(final File file, final boolean useFolder) {
+		if (!useFolder)
+			return file;
 		if (file.isDirectory()) {
 			// for a directory, return the first file in the directory. if there are no files (only dirs), repeat in the first directory
 			final @NonNull File[] contents = file.listFiles();
@@ -207,16 +218,16 @@ public class FileIcon extends JPanel {
 			for (final File f : contents) {
 				if (f.isHidden() || f.getName().startsWith(".") || f.isDirectory())
 					continue;
-				return getFileToRun(f);
+				return getFileToRun(f, true);
 			}
 			if (contents.length > 0)
-				return getFileToRun(contents[0]);
+				return getFileToRun(contents[0], true);
 		}
 		return file;
 	}
 	
 	private final File getIconCacheFile() {
-		return window.metaFolder.toPath().resolve("iconcache").resolve(window.folder.toPath().relativize(fileToRun.toPath().resolveSibling(fileToRun.getName() + ".png"))).toFile();
+		return fileContainer.window.metaFolder.toPath().resolve("iconcache").resolve(fileContainer.window.folder.toPath().relativize(fileToRun.toPath().resolveSibling(fileToRun.getName() + ".png"))).toFile();
 	}
 	
 	public final static @Nullable Path fileFromIconCacheFile(final BDWindow window, final Path iconCacheFile) {
@@ -246,7 +257,7 @@ public class FileIcon extends JPanel {
 //				System.out.println(fi.icon.getClass());
 //				System.out.println(Arrays.asList(fi.icon.getClass().getDeclaredMethods()));
 			if (icon != null) {
-				// Save icon to cache, but onnly if the file doesn't exist yet or has a different content.
+				// Save icon to cache, but only if the file doesn't exist yet or has a different content.
 				try {
 					final File iconCacheFile = getIconCacheFile();
 					iconCacheFile.getParentFile().mkdirs();

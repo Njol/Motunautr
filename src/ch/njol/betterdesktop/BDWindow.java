@@ -51,9 +51,9 @@ import javax.swing.WindowConstants;
 // this is a JDialog so that it is focusable (to be able to easily close dropdown menus, and to hide the taskbar when clicked) but does not appear in the taskbar
 public class BDWindow extends JDialog {
 	
-	public File folder;
-	public File metaFolder;
-	private File propFile;
+	public final File folder;
+	public final File metaFolder;
+	private final File propFile;
 	
 	private static class Props extends PropertiesEx {
 		int x, y, numFilesX = 4;
@@ -230,22 +230,24 @@ public class BDWindow extends JDialog {
 			e.printStackTrace();
 		}
 		
-//		setDropTarget(new DropTa);
-//		setTransferHandler(new TransferHandler(null) {
-//
-//		});
+		files.createDropTarget(this);
 		
 		Main.watchDirectory(folder.toPath(), new FileWatcher.DirectoryListener(200) {
 			@Override
 			public boolean ignoreChange(final Path path) {
-				return path.equals(folder.toPath()) || path.startsWith(metaFolder.toPath().toAbsolutePath());
+				return path.startsWith(metaFolder.toPath().toAbsolutePath());
 			}
 			
 			@Override
 			public void directoryChanged() {
 				System.out.println("Folder " + files.folder + " changed, reloading window");
 				SwingUtilities.invokeLater(() -> {
-					files.reload();
+					if (!BDWindow.this.folder.isDirectory()) { // just to make this more robust
+						dispose();
+					} else {
+						files.reload();
+						setNumFilesX(props.numFilesX, false);
+					}
 				});
 			}
 		});

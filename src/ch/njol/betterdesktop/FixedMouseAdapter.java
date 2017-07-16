@@ -55,7 +55,7 @@ public class FixedMouseAdapter {
 						&& (e.getModifiersEx() & InputEvent.getMaskForButton(b + 1)) != 0
 						&& startPoints[b].distanceSq(e.getLocationOnScreen()) > CLICK_SENSITIVITY_SQ) {
 					startPoints[b] = null;
-					FixedMouseAdapter.this.mouseClickCancelled(e);
+					FixedMouseAdapter.this.mouseDragStarted(e);
 				}
 			}
 			FixedMouseAdapter.this.mouseDragged(e);
@@ -115,16 +115,16 @@ public class FixedMouseAdapter {
 	
 	protected void mouseDragged(final MouseEvent e) {}
 	
-	protected void mouseMoved(final MouseEvent e) {}
-	
-	protected void mouseClicked(final MouseEvent e) {}
-	
 	/**
-	 * Called when a mouse click did not happen because the cursor moved too much
+	 * Called when a drag starts, i.e. a mouse click did not happen because the cursor moved too much.
 	 * 
 	 * @param e A mouse drag event
 	 */
-	protected void mouseClickCancelled(final MouseEvent e) {}
+	protected void mouseDragStarted(final MouseEvent e) {}
+	
+	protected void mouseMoved(final MouseEvent e) {}
+	
+	protected void mouseClicked(final MouseEvent e) {}
 	
 	protected void mouseReleased(final MouseEvent e) {}
 	

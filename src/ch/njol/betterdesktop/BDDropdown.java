@@ -73,6 +73,8 @@ public class BDDropdown extends JDialog {
 			public void windowGainedFocus(final WindowEvent e) {}
 		});
 		
+		files.createDropTarget(this);
+		
 	}
 	
 	@Override
