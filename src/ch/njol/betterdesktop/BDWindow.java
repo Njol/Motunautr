@@ -262,6 +262,8 @@ public class BDWindow extends JDialog {
 		props.numFilesX = numFilesX;
 		final int numFilesY = Math.max(1, 1 + (files.numFiles() - 1) / numFilesX);
 		
+		resizeArea.setVisible(files.numFiles() > 1);
+		
 		int sizeX = numFilesX * (FileIcon.SIZE_X + BDFileContainer.GAP_X) + BDFileContainer.GAP_X,
 				sizeY = TITLE_HEIGHT + numFilesY * (FileIcon.SIZE_Y + BDFileContainer.GAP_Y) + BDFileContainer.GAP_Y;
 		
